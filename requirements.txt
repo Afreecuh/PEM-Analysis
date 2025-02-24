@@ -5,3 +5,4 @@ opencv-python-headless
 pillow
 pytesseract
 matplotlib
+networkx
