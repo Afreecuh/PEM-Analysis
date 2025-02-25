@@ -454,7 +454,7 @@ def plot_shape_composition_bar(ratios):
     return fig
 
 
-# In[2]:
+# In[3]:
 
 
 import streamlit as st
@@ -463,19 +463,33 @@ import re
 import pytesseract
 import cv2
 import numpy as np
-import streamlit.components.v1 as components
+
+def inject_ga():
+    """Inject Google Analytics tracking code into the Streamlit app."""
+    GA_TRACKING_ID = "G-4QWR3D46SD"  # 你的 Google Analytics 代碼
+    ga_code = f"""
+    <script async src="https://www.googletagmanager.com/gtag/js?id={GA_TRACKING_ID}"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){{dataLayer.push(arguments);}}
+        gtag('js', new Date());
+        gtag('config', '{GA_TRACKING_ID}');
+    </script>
+    """
+    st.markdown(f'<meta name="google-analytics" content="{GA_TRACKING_ID}">', unsafe_allow_html=True)
+    st.markdown(ga_code, unsafe_allow_html=True)  # **這樣 GA 才會生效**
 
 def upload_image():
     """
     Let users upload an image for TPB analysis.
     """
-    st.image("cover_image.jpg", use_column_width=True)  # Display a fixed cover image
+    st.image("cover_image.jpg", use_container_width=True)  # Display a fixed cover image
     st.header("TPB Analysis")
-    uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
+    uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"], key="image_upload")
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
         st.session_state.image = image  # Store image for processing
-        st.image(image, caption="Uploaded Image", use_column_width=True)
+        st.image(image, caption="Uploaded Image", use_container_width=True)
         st.success("Image uploaded successfully! Proceed to analysis.")
 
 def show_user_guide():
@@ -497,25 +511,11 @@ def show_user_guide():
     )
     st.sidebar.info(guide_text)
 
-def inject_ga():
-    """Inject Google Analytics tracking code into the Streamlit app."""
-    GA_TRACKING_ID = "G-4QWR3D46SD"  # 你的 Google Analytics 代碼
-    ga_code = f"""
-    <script async src="https://www.googletagmanager.com/gtag/js?id={GA_TRACKING_ID}"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){{dataLayer.push(arguments);}}
-        gtag('js', new Date());
-        gtag('config', '{GA_TRACKING_ID}', {{ 'send_page_view': true }});
-    </script>
-    """
-    components.html(ga_code, height=0)  # 插入 GA 追蹤碼
-
 def main():
     """
     Main function to run the Streamlit app.
     """
-    inject_ga()  # 確保 GA 追蹤碼載入
+    inject_ga()  # **確保 GA 追蹤碼載入**
     show_user_guide()
     upload_image()
 
