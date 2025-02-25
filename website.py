@@ -376,24 +376,6 @@ elif st.session_state.page == 4:
         st.session_state.page = 1
 
 
-# In[14]:
-
-
-import streamlit as st
-from PIL import Image
-
-def upload_image():
-    """
-    讓用戶上傳圖片，然後執行 TPB 分析。
-    """
-    uploaded_file = st.file_uploader("上傳圖片", type=["png", "jpg", "jpeg"])
-    if uploaded_file is not None:
-        image = Image.open(uploaded_file)
-        st.session_state.image = image  # 存儲圖片供後續處理
-        st.image(image, caption="已上傳圖片", use_column_width=True)
-        st.success("圖片上傳成功！請繼續分析。")
-
-
 # In[17]:
 
 
