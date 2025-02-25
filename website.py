@@ -500,6 +500,22 @@ def main():
     """
     Main function to run the Streamlit app.
     """
+    # 加入 Google Analytics 追蹤碼
+    GA_TRACKING_ID = "G-4QWR3D465D"  # 你的 Google Analytics 測量 ID
+    st.markdown(
+        f"""
+        <script async src="https://www.googletagmanager.com/gtag/js?id={GA_TRACKING_ID}"></script>
+        <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){{dataLayer.push(arguments);}}
+        gtag('js', new Date());
+        gtag('config', '{GA_TRACKING_ID}');
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # 顯示使用者指南與上傳圖片功能
     show_user_guide()
     upload_image()
 
