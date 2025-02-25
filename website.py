@@ -501,7 +501,7 @@ def main():
     Main function to run the Streamlit app.
     """
     # 加入 Google Analytics 追蹤碼
-    GA_TRACKING_ID = "G-4QWR3D465D"  # 你的 Google Analytics 測量 ID
+    GA_TRACKING_ID = "G-4QWR3D46SD"  # 你的 Google Analytics 測量 ID
     st.markdown(
         f"""
         <script async src="https://www.googletagmanager.com/gtag/js?id={GA_TRACKING_ID}"></script>
