@@ -454,7 +454,7 @@ def plot_shape_composition_bar(ratios):
     return fig
 
 
-# In[4]:
+# In[5]:
 
 
 import streamlit as st
@@ -463,10 +463,11 @@ import re
 import pytesseract
 import cv2
 import numpy as np
+import streamlit.components.v1 as components
 
 def inject_ga():
-    """Inject Google Analytics tracking code into the Streamlit app using markdown."""
-    GA_TRACKING_ID = "G-4QWR3D46SD"  # 你的 Google Analytics ID
+    """Inject Google Analytics tracking code into the Streamlit app using components.html."""
+    GA_TRACKING_ID = "G-4QWR3D46SD"  # 你的 Google Analytics 代碼
     ga_code = f"""
     <script async src="https://www.googletagmanager.com/gtag/js?id={GA_TRACKING_ID}"></script>
     <script>
@@ -474,9 +475,15 @@ def inject_ga():
         function gtag(){{dataLayer.push(arguments);}}
         gtag('js', new Date());
         gtag('config', '{GA_TRACKING_ID}');
+        console.log("✅ Google Analytics Loaded! Tracking ID: {GA_TRACKING_ID}");
     </script>
     """
-    st.markdown(ga_code, unsafe_allow_html=True)  # 改用 st.markdown
+    components.html(ga_code, height=0)  # 直接插入 HTML
+
+    # 顯示 debug 訊息，確認是否成功載入
+    st.write("✅ Google Analytics tracking code injected successfully.")
+
+
 
 
 def upload_image():
