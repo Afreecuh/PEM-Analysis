@@ -454,7 +454,7 @@ def plot_shape_composition_bar(ratios):
     return fig
 
 
-# In[ ]:
+# In[2]:
 
 
 import streamlit as st
@@ -463,6 +463,7 @@ import re
 import pytesseract
 import cv2
 import numpy as np
+import streamlit.components.v1 as components
 
 def upload_image():
     """
@@ -496,26 +497,25 @@ def show_user_guide():
     )
     st.sidebar.info(guide_text)
 
+def inject_ga():
+    """Inject Google Analytics tracking code into the Streamlit app."""
+    GA_TRACKING_ID = "G-4QWR3D46SD"  # 你的 Google Analytics 代碼
+    ga_code = f"""
+    <script async src="https://www.googletagmanager.com/gtag/js?id={GA_TRACKING_ID}"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){{dataLayer.push(arguments);}}
+        gtag('js', new Date());
+        gtag('config', '{GA_TRACKING_ID}', {{ 'send_page_view': true }});
+    </script>
+    """
+    components.html(ga_code, height=0)  # 插入 GA 追蹤碼
+
 def main():
     """
     Main function to run the Streamlit app.
     """
-    # 加入 Google Analytics 追蹤碼
-    GA_TRACKING_ID = "G-4QWR3D46SD"  # 你的 Google Analytics 測量 ID
-    st.markdown(
-        f"""
-        <script async src="https://www.googletagmanager.com/gtag/js?id={GA_TRACKING_ID}"></script>
-        <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){{dataLayer.push(arguments);}}
-        gtag('js', new Date());
-        gtag('config', '{GA_TRACKING_ID}');
-        </script>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # 顯示使用者指南與上傳圖片功能
+    inject_ga()  # 確保 GA 追蹤碼載入
     show_user_guide()
     upload_image()
 
