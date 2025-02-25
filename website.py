@@ -52,6 +52,51 @@ def estimate_pixel_to_um(image):
     print("❌ 無法解析比例尺，使用預設 1:1")
     return default_pixel_to_um
 
+def clean_ocr_text(ocr_text):
+    """
+    清理 OCR 讀取的文字，移除雜訊和特殊字符，確保格式統一
+    """
+    # 移除特殊字符和多餘空格
+    cleaned_text = re.sub(r"[^0-9a-zA-Zµm]", "", ocr_text)
+    return cleaned_text
+
+def select_scale_region(image):
+    """
+    讓用戶選取比例尺區域，使用 OCR 讀取比例尺標示。
+    """
+    st.subheader("請選取比例尺區域")
+    if "image" in st.session_state:
+        st.image(st.session_state.image, caption="請選擇比例尺區域", use_container_width=True)
+    
+        # OCR 自動解析比例尺
+        gray = cv2.cvtColor(np.array(st.session_state.image), cv2.COLOR_RGB2GRAY)
+        ocr_text = pytesseract.image_to_string(gray, config="--psm 6")
+        cleaned_text = clean_ocr_text(ocr_text)
+
+        # 解析比例尺數值
+        match = re.search(r"([\d.]+)\s*(µm|nm|mm)", cleaned_text)
+        scale_length_um = None
+        
+        if match:
+            scale_length_um = float(match.group(1))
+            unit = match.group(2)
+            if unit == "nm":
+                scale_length_um /= 1000  # 轉換成 µm
+            elif unit == "mm":
+                scale_length_um *= 1000  # 轉換成 µm
+            st.success(f"自動解析比例尺: {scale_length_um} µm")
+        
+        # 提供手動輸入選項
+        scale_text = st.text_input("或手動輸入比例尺長度 (µm)", value=str(scale_length_um) if scale_length_um else "")
+
+        if st.button("確定比例尺"):
+            try:
+                scale_length_um = float(scale_text)
+                st.session_state.scale_length_um = scale_length_um
+                st.success(f"比例尺設定成功: {scale_length_um} µm")
+            except ValueError:
+                st.error("請輸入有效的數字。")
+
 
 # In[5]:
 
@@ -349,59 +394,6 @@ def upload_image():
         st.success("圖片上傳成功！請繼續分析。")
 
 
-# In[15]:
-
-
-def clean_ocr_text(ocr_text):
-    """
-    清理 OCR 讀取的文字，移除雜訊和特殊字符，確保格式統一
-    """
-    # 移除特殊字符和多餘空格
-    cleaned_text = re.sub(r"[^0-9a-zA-Zµm]", "", ocr_text)
-    return cleaned_text
-
-
-# In[16]:
-
-
-def select_scale_region(image):
-    """
-    讓用戶選取比例尺區域，使用 OCR 讀取比例尺標示。
-    """
-    st.subheader("請選取比例尺區域")
-    if "image" in st.session_state:
-        st.image(st.session_state.image, caption="請選擇比例尺區域", use_column_width=True)
-    
-        # OCR 自動解析比例尺
-        gray = cv2.cvtColor(np.array(st.session_state.image), cv2.COLOR_RGB2GRAY)
-        ocr_text = pytesseract.image_to_string(gray, config="--psm 6")
-        cleaned_text = clean_ocr_text(ocr_text)
-
-        # 解析比例尺數值
-        match = re.search(r"([\d.]+)\s*(µm|nm|mm)", cleaned_text)
-        scale_length_um = None
-        
-        if match:
-            scale_length_um = float(match.group(1))
-            unit = match.group(2)
-            if unit == "nm":
-                scale_length_um /= 1000  # 轉換成 µm
-            elif unit == "mm":
-                scale_length_um *= 1000  # 轉換成 µm
-            st.success(f"自動解析比例尺: {scale_length_um} µm")
-        
-        # 提供手動輸入選項
-        scale_text = st.text_input("或手動輸入比例尺長度 (µm)", value=str(scale_length_um) if scale_length_um else "")
-
-        if st.button("確定比例尺"):
-            try:
-                scale_length_um = float(scale_text)
-                st.session_state.scale_length_um = scale_length_um
-                st.success(f"比例尺設定成功: {scale_length_um} µm")
-            except ValueError:
-                st.error("請輸入有效的數字。")
-
-
 # In[17]:
 
 
@@ -492,30 +484,43 @@ import numpy as np
 
 def upload_image():
     """
-    讓用戶上傳圖片，然後執行 TPB 分析。
+    Let users upload an image for TPB analysis.
     """
-    uploaded_file = st.file_uploader("上傳圖片", type=["png", "jpg", "jpeg"])
+    st.image("cover_image.jpg", use_column_width=True)  # Display a fixed cover image
+    st.header("TPB Analysis")
+    uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
-        st.session_state.image = image  # 存儲圖片供後續處理
-        st.image(image, caption="已上傳圖片", use_column_width=True)
-        st.success("圖片上傳成功！請繼續分析。")
+        st.session_state.image = image  # Store image for processing
+        st.image(image, caption="Uploaded Image", use_column_width=True)
+        st.success("Image uploaded successfully! Proceed to analysis.")
 
 def show_user_guide():
-    """顯示用戶指南"""
-    st.sidebar.title("User Guide")
-    st.sidebar.info(
-        "1. 點擊 '上傳圖片' 選擇圖像文件 (JPG, PNG)。\n"
-        "2. 系統將處理圖像並顯示: \n"
-        "   - 原始圖像 \n"
-        "   - 處理後圖像 \n"
-        "   - TPB 可信度分布直方圖 \n"
-        "3. 使用導航按鈕切換頁面: \n"
-        "   - 頁面 2: TPB 分析結果 \n"
-        "   - 頁面 3: 形態學分析 \n"
-        "4. 確保使用清晰、高解析度的圖像以獲得最佳結果。\n"
-        "5. 用戶指南按鈕始終可用於查看幫助資訊。"
+    """
+    Display the user guide in English.
+    """
+    st.sidebar.header("User Guide")
+    guide_text = (
+        "1. Click **'Upload Image'** to select an image file (JPG, PNG).\n"
+        "2. The system will process the image and display:\n"
+        "   - Original Image\n"
+        "   - Processed Image\n"
+        "   - TPB Confidence Distribution Map\n"
+        "3. Use the navigation buttons to switch between pages:\n"
+        "   - **Page 2**: TPB Analysis Results\n"
+        "   - **Page 3**: Morphology Analysis\n"
+        "4. For the best results, ensure that the uploaded image is **clear and high-resolution**.\n"
+        "5. The user guide is always available for reference."
     )
+    st.sidebar.info(guide_text)
 
-show_user_guide()
+def main():
+    """
+    Main function to run the Streamlit app.
+    """
+    show_user_guide()
+    upload_image()
+
+if __name__ == "__main__":
+    main()
 
