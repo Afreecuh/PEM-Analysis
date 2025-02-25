@@ -454,7 +454,7 @@ def plot_shape_composition_bar(ratios):
     return fig
 
 
-# In[6]:
+# In[7]:
 
 
 import streamlit as st
@@ -480,6 +480,7 @@ def inject_ga():
     st.markdown(f"<script>{ga_code}</script>", unsafe_allow_html=True)  # 用 markdown 方式插入 JS
 
 inject_ga()
+
 
 def upload_image():
     """
