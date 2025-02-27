@@ -62,25 +62,25 @@ def estimate_pixel_to_um(image):
             st.error("請輸入有效的數字。")
 
 def clean_ocr_text(ocr_text):
-    """
-    清理 OCR 讀取的文字，移除雜訊和特殊字符，確保格式統一
-    """
+    """ 清理 OCR 讀取的文字，移除雜訊和特殊字符，確保格式統一 """
     cleaned_text = re.sub(r"[^0-9a-zA-Zµm]", "", ocr_text)
     return cleaned_text
 
 def select_scale_region(image):
     """
-    讓用戶手動選取比例尺區域，並使用 OCR 讀取比例尺標示。
+    讓用戶手動框選比例尺區域，OCR 讀取比例尺標示，並偵測刻度線來計算 µm/px。
+    如果 OCR 失敗，讓用戶手動輸入比例尺長度。
     """
     st.subheader("請選取比例尺區域")
     img_array = np.array(image)
+    height, width = img_array.shape[:2]
 
-    # 讓用戶選擇比例尺的 Y 軸範圍
-    height = img_array.shape[0]
+    # 讓用戶選擇比例尺的 X 軸和 Y 軸範圍
     y_start, y_end = st.slider("選取比例尺區域 (Y 軸)", 0, height, (height - 50, height), step=5)
+    x_start, x_end = st.slider("選取比例尺區域 (X 軸)", 0, width, (0, width), step=5)
 
     # 擷取選取的區域
-    scale_region = img_array[y_start:y_end, :]
+    scale_region = img_array[y_start:y_end, x_start:x_end]
     gray = cv2.cvtColor(scale_region, cv2.COLOR_RGB2GRAY)
 
     # OCR 讀取比例尺數據
@@ -88,7 +88,7 @@ def select_scale_region(image):
     cleaned_text = clean_ocr_text(ocr_text)
 
     # 解析比例尺數值
-    match = re.search(r"([\d.]+)\\s*(µm|nm|mm)", cleaned_text)
+    match = re.search(r"([\d.]+)\s*(µm|nm|mm)", cleaned_text)
     scale_length_um = None
 
     if match:
@@ -98,7 +98,22 @@ def select_scale_region(image):
             scale_length_um /= 1000  # 轉換成 µm
         elif unit == "mm":
             scale_length_um *= 1000  # 轉換成 µm
-        st.success(f"自動解析比例尺: {scale_length_um} µm")
+        st.success(f"✅ 自動解析比例尺: {scale_length_um} µm")
+
+    # 偵測比例尺刻度線來計算 scale_pixels
+    edges = cv2.Canny(gray, 50, 150)
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=10, minLineLength=10, maxLineGap=5)
+
+    scale_pixels = None
+    if lines is not None:
+        scale_pixels = np.mean([abs(line[0][2] - line[0][0]) for line in lines])
+        st.info(f"🔍 偵測到比例尺長度: {scale_pixels:.2f} 像素")
+
+    # 顯示即時數值（讀取數值 + 計算 µm/px）
+    if scale_length_um and scale_pixels:
+        pixel_to_um = scale_length_um / scale_pixels
+        st.warning(f"📏 **計算結果：1 像素 = {pixel_to_um:.4f} µm**")
+        st.session_state.pixel_to_um = pixel_to_um
 
     # 提供手動輸入選項
     scale_text = st.text_input("或手動輸入比例尺長度 (µm)", value=str(scale_length_um) if scale_length_um else "")
@@ -106,10 +121,15 @@ def select_scale_region(image):
     if st.button("確定比例尺"):
         try:
             scale_length_um = float(scale_text)
-            st.session_state.scale_length_um = scale_length_um
-            st.success(f"比例尺設定成功: {scale_length_um} µm")
+            if scale_pixels:
+                pixel_to_um = scale_length_um / scale_pixels
+                st.session_state.pixel_to_um = pixel_to_um
+                st.success(f"✅ 比例尺設定成功: {scale_length_um} µm, 換算比例: {pixel_to_um:.4f} µm/px")
+            else:
+                st.session_state.scale_length_um = scale_length_um
+                st.success(f"✅ 比例尺設定成功: {scale_length_um} µm (無像素長度資訊)")
         except ValueError:
-            st.error("請輸入有效的數字。")
+            st.error("❌ 請輸入有效的數字。")
 
 
 # In[6]:
@@ -365,10 +385,6 @@ def plot_shape_composition_bar(ratios):
 # In[8]:
 
 
-import streamlit as st
-import streamlit.components.v1 as components
-from PIL import Image
-
 def inject_ga():
     """Inject Google Analytics tracking code into the Streamlit app."""
     GA_TRACKING_ID = "G-4QWR3D46SD"
@@ -402,7 +418,6 @@ def upload_image():
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
         st.session_state.image = image  # 存儲圖片供後續處理
-        st.image(image, caption="Uploaded Image", use_container_width=True)
         st.success("Image uploaded successfully! Proceed to analysis.")
 
 def show_user_guide():
@@ -452,38 +467,22 @@ def main():
         st.write("(Empty Page)")
         if st.button("Restart"):
             st.session_state.page = 1
-    
-    # 讓 Next 按鈕固定在上傳區塊的右下角
-    st.markdown(
-        """
-        <style>
-        .next-button {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 10px;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-    
-    st.markdown(
-        """
-        <style>
-        .next-button-container {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 10px;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
 
-    st.markdown('<div class="next-button-container">', unsafe_allow_html=True)
-    if st.button("Next", key="next_button", help="Go to next step"):
-        st.session_state.page += 1
-    st.markdown('</div>', unsafe_allow_html=True)
+    # **按鈕佈局：Previous 在左、Next 在右**
+    col1, col2 = st.columns([1, 5])
+
+    with col1:
+        if st.session_state.page > 1:  # 第一頁隱藏 Previous
+            if st.button("Previous", key="prev_button"):
+                prev_page()
+
+    with col2:
+        if st.session_state.page < 4:  # 不是最後一頁才顯示 Next
+            if st.button("Next", key="next_button", help="Go to next step"):
+                next_page()
+        else:  # 最後一頁顯示 Restart
+            if st.button("Restart", key="restart_button"):
+                st.session_state.page = 1
 
 if __name__ == "__main__":
     main()
