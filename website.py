@@ -23,31 +23,20 @@ import time
 
 
 def estimate_pixel_to_um(image):
-    """
-    解析圖片中的比例尺資訊（OCR + 傳統方法），無法識別則使用預設值。
-    """
-    default_pixel_to_um = 0.01
+    """ OCR 讀取比例尺數值 """
     img_array = np.array(image)
-    img = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-    
-    # OCR 讀取比例尺數值
-    roi = img[-50:, :]  # 取圖片底部
-    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
     text = pytesseract.image_to_string(gray, config="--psm 6")
-    
-    # 嘗試解析 OCR 結果
     match = re.search(r"([\d.]+)\s*(µm|nm|mm)", text, re.IGNORECASE)
     if match:
         scale_bar_length = float(match.group(1))
         unit = match.group(2).lower()
         if unit == "nm":
-            scale_bar_length /= 1000  # 轉換成 µm
+            scale_bar_length /= 1000
         elif unit == "mm":
-            scale_bar_length *= 1000  # 轉換成 µm
-        return scale_bar_length / img.shape[1]  # 計算 µm/px
-    
-    print("❌ 無法解析比例尺，使用預設 1:1")
-    return default_pixel_to_um
+            scale_bar_length *= 1000
+        return scale_bar_length / img_array.shape[1]
+    return None
 
 def clean_ocr_text(ocr_text):
     """
