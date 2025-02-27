@@ -24,18 +24,19 @@ import time
 
 def estimate_pixel_to_um(image):
     """
-    解析圖片中的比例尺資訊（OCR + 手動輸入選項）。
+    使用 OCR 讀取比例尺數值，嘗試解析 µm/px。
+    若 OCR 失敗，則要求用戶手動框選比例尺區域或手動輸入數值。
     """
+    st.subheader("📏 OCR 自動解析比例尺")
+    default_pixel_to_um = None  # 初始狀態
     img_array = np.array(image)
     gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-    
+
     # OCR 讀取比例尺數值
     text = pytesseract.image_to_string(gray, config="--psm 6")
-    
+
     # 嘗試解析 OCR 結果
     match = re.search(r"([\d.]+)\s*(µm|nm|mm)", text, re.IGNORECASE)
-    scale_bar_length = None
-    
     if match:
         scale_bar_length = float(match.group(1))
         unit = match.group(2).lower()
@@ -43,93 +44,48 @@ def estimate_pixel_to_um(image):
             scale_bar_length /= 1000  # 轉換成 µm
         elif unit == "mm":
             scale_bar_length *= 1000  # 轉換成 µm
-    
-    # 顯示 OCR 讀取結果
-    if scale_bar_length:
-        st.success(f"OCR 讀取比例尺: {scale_bar_length} µm")
+
+        pixel_to_um = scale_bar_length / img_array.shape[1]  # 計算 µm/px
+        st.session_state.pixel_to_um = pixel_to_um  # 存儲結果
+
+        # 顯示 OCR 讀取結果
+        st.success(f"📏 自動解析比例尺: {scale_bar_length} µm，換算為 {pixel_to_um:.4f} µm/px")
+        return pixel_to_um
     else:
-        st.warning("無法自動讀取比例尺，請手動輸入。")
+        st.warning("❌ 無法解析比例尺，請嘗試手動框選區域或輸入數值")
+        return None
 
-    # 提供手動輸入比例尺
-    scale_text = st.text_input("或手動輸入比例尺長度 (µm)", value=str(scale_bar_length) if scale_bar_length else "")
-
-    if st.button("確認比例尺"):
-        try:
-            scale_length_um = float(scale_text)
-            st.session_state.scale_length_um = scale_length_um
-            st.success(f"比例尺設定成功: {scale_length_um} µm")
-        except ValueError:
-            st.error("請輸入有效的數字。")
-
-def clean_ocr_text(ocr_text):
-    """ 清理 OCR 讀取的文字，移除雜訊和特殊字符，確保格式統一 """
-    cleaned_text = re.sub(r"[^0-9a-zA-Zµm]", "", ocr_text)
-    return cleaned_text
-
-def select_scale_region(image):
+def select_scale_region():
     """
-    讓用戶手動框選比例尺區域，OCR 讀取比例尺標示，並偵測刻度線來計算 µm/px。
-    如果 OCR 失敗，讓用戶手動輸入比例尺長度。
+    讓用戶手動框選比例尺區域，當 OCR 失敗時使用此功能。
     """
-    st.subheader("請選取比例尺區域")
-    img_array = np.array(image)
-    height, width = img_array.shape[:2]
+    st.subheader("🔍 手動選取比例尺區域")
+    st.text("請使用滑鼠框選比例尺範圍，並輸入比例尺數值")
 
-    # 讓用戶選擇比例尺的 X 軸和 Y 軸範圍
-    y_start, y_end = st.slider("選取比例尺區域 (Y 軸)", 0, height, (height - 50, height), step=5)
-    x_start, x_end = st.slider("選取比例尺區域 (X 軸)", 0, width, (0, width), step=5)
+    # 顯示原始圖片
+    if "image" in st.session_state:
+        st.image(st.session_state.image, caption="請框選比例尺區域", use_column_width=True)
 
-    # 擷取選取的區域
-    scale_region = img_array[y_start:y_end, x_start:x_end]
-    gray = cv2.cvtColor(scale_region, cv2.COLOR_RGB2GRAY)
+        # 提供滑動條來手動選擇區域
+        x1 = st.slider("選擇 X1 (起點)", 0, st.session_state.image.width, 0)
+        x2 = st.slider("選擇 X2 (終點)", 0, st.session_state.image.width, st.session_state.image.width)
+        y1 = st.slider("選擇 Y1 (起點)", 0, st.session_state.image.height, int(st.session_state.image.height * 0.9))
+        y2 = st.slider("選擇 Y2 (終點)", 0, st.session_state.image.height, st.session_state.image.height)
 
-    # OCR 讀取比例尺數據
-    ocr_text = pytesseract.image_to_string(gray, config="--psm 6")
-    cleaned_text = clean_ocr_text(ocr_text)
+        # 計算框選區域的寬度（像素）
+        selected_width = abs(x2 - x1)
 
-    # 解析比例尺數值
-    match = re.search(r"([\d.]+)\s*(µm|nm|mm)", cleaned_text)
-    scale_length_um = None
+        # 提供輸入比例尺的長度
+        scale_text = st.text_input("請輸入比例尺長度 (µm)", value="10")
 
-    if match:
-        scale_length_um = float(match.group(1))
-        unit = match.group(2)
-        if unit == "nm":
-            scale_length_um /= 1000  # 轉換成 µm
-        elif unit == "mm":
-            scale_length_um *= 1000  # 轉換成 µm
-        st.success(f"✅ 自動解析比例尺: {scale_length_um} µm")
-
-    # 偵測比例尺刻度線來計算 scale_pixels
-    edges = cv2.Canny(gray, 50, 150)
-    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=10, minLineLength=10, maxLineGap=5)
-
-    scale_pixels = None
-    if lines is not None:
-        scale_pixels = np.mean([abs(line[0][2] - line[0][0]) for line in lines])
-        st.info(f"🔍 偵測到比例尺長度: {scale_pixels:.2f} 像素")
-
-    # 顯示即時數值（讀取數值 + 計算 µm/px）
-    if scale_length_um and scale_pixels:
-        pixel_to_um = scale_length_um / scale_pixels
-        st.warning(f"📏 **計算結果：1 像素 = {pixel_to_um:.4f} µm**")
-        st.session_state.pixel_to_um = pixel_to_um
-
-    # 提供手動輸入選項
-    scale_text = st.text_input("或手動輸入比例尺長度 (µm)", value=str(scale_length_um) if scale_length_um else "")
-
-    if st.button("確定比例尺"):
-        try:
-            scale_length_um = float(scale_text)
-            if scale_pixels:
-                pixel_to_um = scale_length_um / scale_pixels
+        if st.button("確定比例尺"):
+            try:
+                scale_length_um = float(scale_text)
+                pixel_to_um = scale_length_um / selected_width
                 st.session_state.pixel_to_um = pixel_to_um
-                st.success(f"✅ 比例尺設定成功: {scale_length_um} µm, 換算比例: {pixel_to_um:.4f} µm/px")
-            else:
-                st.session_state.scale_length_um = scale_length_um
-                st.success(f"✅ 比例尺設定成功: {scale_length_um} µm (無像素長度資訊)")
-        except ValueError:
-            st.error("❌ 請輸入有效的數字。")
+                st.success(f"✅ 手動設定比例尺: {scale_length_um} µm，換算為 {pixel_to_um:.4f} µm/px")
+            except ValueError:
+                st.error("❌ 請輸入有效的數字")
 
 
 # In[6]:
@@ -385,6 +341,7 @@ def plot_shape_composition_bar(ratios):
 # In[8]:
 
 
+# **Google Analytics 追蹤碼**
 def inject_ga():
     """Inject Google Analytics tracking code into the Streamlit app."""
     GA_TRACKING_ID = "G-4QWR3D46SD"
@@ -399,9 +356,13 @@ def inject_ga():
     """
     components.html(ga_code, height=0)
 
-# 初始化 Session State
+# **初始化 Session State**
 if "page" not in st.session_state:
     st.session_state.page = 1
+if "pixel_to_um" not in st.session_state:
+    st.session_state.pixel_to_um = None
+if "image" not in st.session_state:
+    st.session_state.image = None
 
 def next_page():
     st.session_state.page += 1
@@ -409,19 +370,59 @@ def next_page():
 def prev_page():
     st.session_state.page -= 1
 
+# **頁面 1：上傳圖片與比例尺解析**
 def upload_image():
-    """顯示上傳圖片區域，並確保它出現在封面圖片下方。"""
-    st.image("cover_image.jpg", use_container_width=True)  # 確保封面圖片最上面
-    st.title("PEM Analysis")  # 設定標題，確保只有一個
-    
+    """顯示上傳圖片區域，確保它出現在封面圖片下方，執行 OCR 並允許手動輸入比例尺。"""
+    st.image("cover_image.jpg", use_container_width=True)
+    st.title("PEM Analysis")
+
     uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"], key="image_upload")
-    if uploaded_file is not None:
+
+    if uploaded_file:
         image = Image.open(uploaded_file)
         st.session_state.image = image  # 存儲圖片供後續處理
         st.success("Image uploaded successfully! Proceed to analysis.")
 
+        # **OCR 讀取比例尺**
+        pixel_to_um = estimate_pixel_to_um(image)
+
+        # **顯示 OCR 讀取結果**
+        if pixel_to_um is not None:
+            st.session_state.pixel_to_um = pixel_to_um
+            st.info(f"OCR 解析比例尺: **1 pixel ≈ {pixel_to_um:.4f} µm**")
+        else:
+            st.warning("⚠️ 無法自動解析比例尺，請手動選擇比例尺區域！")
+            select_scale_region()
+
+# **頁面 2：TPB 分析結果**
+def show_tpb_results():
+    st.title("PEM Analysis - Results")
+    if "image" in st.session_state and st.session_state.image is not None:
+        st.image(st.session_state.image, caption="Processed Image", use_container_width=True)
+    
+    fig, ax = plt.subplots(figsize=(4, 4))
+    ax.hist([0.1, 0.3, 0.5, 0.7, 0.9], bins=10, range=(0, 1), edgecolor="black")
+    ax.set_title("TPB confidence distribution")
+    ax.set_xlabel("Confidence score")
+    ax.set_ylabel("Number of TPB candidates")
+    st.pyplot(fig)
+
+# **頁面 3：形態學分析**
+def show_morphology_analysis():
+    st.title("Morphology Analysis")
+    if "image" in st.session_state and st.session_state.image is not None:
+        st.image(st.session_state.image, caption="Morphology Processed Image", use_container_width=True)
+    st.write("Shape composition analysis will be displayed here.")
+
+# **頁面 4：結束頁面**
+def show_final_page():
+    st.title("Final Page")
+    st.write("(Empty Page)")
+    if st.button("Restart"):
+        st.session_state.page = 1
+
+# **側邊欄使用者指南**
 def show_user_guide():
-    """在側邊欄顯示用戶指南。"""
     st.sidebar.header("User Guide")
     guide_text = (
         "1. Click **'Upload Image'** to select an image file (JPG, PNG).\n"
@@ -437,38 +438,25 @@ def show_user_guide():
     )
     st.sidebar.info(guide_text)
 
+# **主函式**
 def main():
-    """主函式，負責顯示頁面內容，並確保 next 按鈕在上傳區塊右下角。"""
+    """主函式，負責顯示頁面內容，確保 next 按鈕在正確位置，保留 OCR & TPB 分析。"""
     inject_ga()
     show_user_guide()
     
     if st.session_state.page == 1:
         upload_image()
-    
-    elif st.session_state.page == 2:
-        st.title("PEM Analysis - Results")
-        if "image" in st.session_state:
-            st.image(st.session_state.image, caption="Processed Image", use_container_width=True)
-        fig, ax = plt.subplots(figsize=(4, 4))
-        ax.hist([0.1, 0.3, 0.5, 0.7, 0.9], bins=10, range=(0, 1), edgecolor="black")
-        ax.set_title("TPB confidence distribution")
-        ax.set_xlabel("Confidence score")
-        ax.set_ylabel("Number of TPB candidates")
-        st.pyplot(fig)
-    
-    elif st.session_state.page == 3:
-        st.title("Morphology Analysis")
-        if "image" in st.session_state:
-            st.image(st.session_state.image, caption="Morphology Processed Image", use_container_width=True)
-        st.write("Shape composition analysis will be displayed here.")
-    
-    elif st.session_state.page == 4:
-        st.title("Final Page")
-        st.write("(Empty Page)")
-        if st.button("Restart"):
-            st.session_state.page = 1
 
-    # **按鈕佈局：Previous 在左、Next 在右**
+    elif st.session_state.page == 2:
+        show_tpb_results()
+
+    elif st.session_state.page == 3:
+        show_morphology_analysis()
+
+    elif st.session_state.page == 4:
+        show_final_page()
+
+    # **按鈕佈局：Previous 在左，Next 在右**
     col1, col2 = st.columns([1, 5])
 
     with col1:
