@@ -12,17 +12,15 @@ import networkx as nx
 from PIL import Image
 import matplotlib.pyplot as plt
 import re
+import pytesseract
+import streamlit.components.v1 as components
+import io
+import math
+import time
 
 
 # In[4]:
 
-
-import streamlit as st
-import cv2
-import numpy as np
-import pytesseract
-from PIL import Image
-import io
 
 def estimate_pixel_to_um(image):
     """
@@ -38,7 +36,6 @@ def estimate_pixel_to_um(image):
     text = pytesseract.image_to_string(gray, config="--psm 6")
     
     # 嘗試解析 OCR 結果
-    import re
     match = re.search(r"([\d.]+)\s*(µm|nm|mm)", text, re.IGNORECASE)
     if match:
         scale_bar_length = float(match.group(1))
@@ -98,7 +95,7 @@ def select_scale_region(image):
                 st.error("請輸入有效的數字。")
 
 
-# In[5]:
+# In[6]:
 
 
 # 使用 Otsu + 形態學處理進行圖像分割
@@ -116,9 +113,6 @@ def segment_image_otsu(image):
     # Canny 邊緣檢測
     edges = cv2.Canny(binary, 100, 200)
     return edges, binary
-
-
-# In[6]:
 
 
 # 預處理圖像並檢測顆粒
@@ -139,12 +133,6 @@ def detect_particles(image, pixel_to_um):
             centroids.append((cx, cy))
             particle_data.append((cx, cy, area_um, circularity))
     return centroids, particle_data, binary
-
-
-# In[7]:
-
-
-import math  # 如果尚未引用 math 模組，請加上這一行
 
 def detect_tpb_points_improved(centroids, pixel_to_um, threshold_um=0.5, angle_threshold=30):
     """
@@ -211,7 +199,7 @@ def detect_tpb_points_improved(centroids, pixel_to_um, threshold_um=0.5, angle_t
     return tpb_points, confidence_scores
 
 
-# In[8]:
+# In[9]:
 
 
 # 可視化 TPB 結果
@@ -228,20 +216,12 @@ def visualize_tpb(image, centroids, tpb_points):
     cv2.imwrite(output_path, img)
     return output_path
 
-
-# In[9]:
-
-
 # 計算 TPB 密度
 def calculate_tpb_density(tpb_points, image_shape, pixel_to_um):
     img_area_um2 = (image_shape[0] * pixel_to_um) * (image_shape[1] * pixel_to_um)
     unit_count = img_area_um2 / 10
     tpb_density = len(tpb_points) / unit_count if unit_count > 0 else 0
     return tpb_density
-
-
-# In[10]:
-
 
 # 保存數據到 CSV
 def save_tpb_data(particle_data, tpb_points):
@@ -250,11 +230,7 @@ def save_tpb_data(particle_data, tpb_points):
     df.to_csv("particles.csv", index=False)
     df_tpb.to_csv("tpb_points.csv", index=False)
 
-
-# In[11]:
-
-
-# 繪製可信度直方圖
+    # 繪製可信度直方圖
 def plot_confidence_histogram(confidence_scores):
     """
     繪製候選 TPB 點可信度分布直方圖，並返回 matplotlib 的 Figure 對象。
@@ -267,13 +243,6 @@ def plot_confidence_histogram(confidence_scores):
     ax.set_ylabel("點的數量")
     ax.set_xticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
     return fig
-
-
-# In[12]:
-
-
-import streamlit as st
-import time
 
 def show_progress_overlay(duration=3000, tip_text="Tips: Use a clear, high-resolution image for better analysis results."):
     """
@@ -300,10 +269,6 @@ def hide_progress_bar():
 
 # In[13]:
 
-
-import streamlit as st
-from PIL import Image
-import matplotlib.pyplot as plt
 
 # 初始化 Session State
 if "page" not in st.session_state:
@@ -457,14 +422,6 @@ def plot_shape_composition_bar(ratios):
 # In[8]:
 
 
-import streamlit as st
-from PIL import Image
-import re
-import pytesseract
-import cv2
-import numpy as np
-import streamlit.components.v1 as components
-
 def inject_ga():
     """Inject Google Analytics tracking code into the Streamlit app."""
     GA_TRACKING_ID = "G-4QWR3D46SD"  # 你的 Google Analytics 代碼
@@ -477,25 +434,24 @@ def inject_ga():
         gtag('config', '{GA_TRACKING_ID}', {{ 'send_page_view': true }});
     </script>
     """
-    components.html(ga_code, height=0)  # **確保這行執行，而不是用 st.code() 顯示**
-
+    components.html(ga_code, height=0)
 
 def upload_image():
     """
-    Let users upload an image for TPB analysis.
+    顯示上傳圖片區域，並確保它出現在封面圖片下方。
     """
-    st.image("cover_image.jpg", use_container_width=True)  # Display a fixed cover image
-    st.header("TPB Analysis")
+    st.image("cover_image.jpg", use_column_width=True)  # 顯示封面圖片
+    st.header("PEM Analysis")
     uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"], key="image_upload")
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
-        st.session_state.image = image  # Store image for processing
-        st.image(image, caption="Uploaded Image", use_container_width=True)
+        st.session_state.image = image  # 存儲圖片供後續處理
+        st.image(image, caption="Uploaded Image", use_column_width=True)
         st.success("Image uploaded successfully! Proceed to analysis.")
 
 def show_user_guide():
     """
-    Display the user guide in English.
+    在側邊欄顯示用戶指南。
     """
     st.sidebar.header("User Guide")
     guide_text = (
@@ -514,11 +470,33 @@ def show_user_guide():
 
 def main():
     """
-    Main function to run the Streamlit app.
+    主函式，負責顯示頁面內容，並確保 next 按鈕在螢幕右下角。
     """
-    inject_ga()  # **確保 GA 追蹤碼載入**
+    inject_ga()
     show_user_guide()
     upload_image()
+    
+    # 讓 Next 按鈕固定在右下角
+    st.markdown(
+        """
+        <style>
+        .next-button {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    # 顯示下一頁按鈕
+    if st.button("Next", key="next_button", help="Go to next step"):
+        st.session_state.page = 2  # 跳轉到下一頁
+    
+    st.markdown('<div class="next-button">', unsafe_allow_html=True)
+    st.button("Next", key="next_button_fixed")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
