@@ -406,7 +406,7 @@ def show_user_guide():
     st.sidebar.info(guide_text)
 
 def main():
-    """主函式，負責顯示頁面內容，並確保 next 按鈕在螢幕右下角。"""
+    """主函式，負責顯示頁面內容，並確保 next 按鈕在上傳區塊右下角。"""
     inject_ga()
     show_user_guide()
     
@@ -436,30 +436,24 @@ def main():
         if st.button("Restart"):
             st.session_state.page = 1
     
-    # 讓 Next 按鈕固定在右下角
+    # 讓 Next 按鈕固定在上傳區塊的右下角
     st.markdown(
         """
         <style>
         .next-button {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 10px;
         }
         </style>
         """,
         unsafe_allow_html=True
     )
     
-    col1, col2 = st.columns([1, 5])
-    with col1:
-        if st.session_state.page > 1 and st.button("Previous", key="prev_button"):
-            prev_page()
-    
-    with col2:
-        st.markdown('<div class="next-button">', unsafe_allow_html=True)
-        if st.session_state.page < 4 and st.button("Next", key="next_button", help="Go to next step"):
-            next_page()
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<div class="next-button">', unsafe_allow_html=True)
+    if st.session_state.page < 4 and st.button("Next", key="next_button", help="Go to next step"):
+        next_page()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
