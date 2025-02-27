@@ -267,80 +267,6 @@ def hide_progress_bar():
     st.empty()
 
 
-# In[13]:
-
-
-# 初始化 Session State
-if "page" not in st.session_state:
-    st.session_state.page = 1
-
-def next_page():
-    st.session_state.page += 1
-
-def prev_page():
-    st.session_state.page -= 1
-
-# **頁面 1：上傳圖片**
-if st.session_state.page == 1:
-    st.title("TPB Analysis - Upload Image")
-    uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
-
-    if uploaded_file:
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Image", use_column_width=True)
-        st.session_state.image = image  # 存儲圖片供下一頁使用
-
-    if st.button("Next"):
-        next_page()
-
-# **頁面 2：顯示結果**
-elif st.session_state.page == 2:
-    st.title("TPB Analysis - Results")
-
-    if "image" in st.session_state:
-        st.image(st.session_state.image, caption="Processed Image", use_column_width=True)
-
-    fig, ax = plt.subplots(figsize=(4, 4))
-    ax.hist([0.1, 0.3, 0.5, 0.7, 0.9], bins=10, range=(0, 1), edgecolor="black")
-    ax.set_title("TPB confidence distribution")
-    ax.set_xlabel("Confidence score")
-    ax.set_ylabel("Number of TPB candidates")
-    st.pyplot(fig)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Previous"):
-            prev_page()
-    with col2:
-        if st.button("Next"):
-            next_page()
-
-# **頁面 3：顯示形態學分析**
-elif st.session_state.page == 3:
-    st.title("Morphology Analysis")
-
-    if "image" in st.session_state:
-        st.image(st.session_state.image, caption="Morphology Processed Image", use_column_width=True)
-
-    st.write("Shape composition analysis will be displayed here.")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Previous"):
-            prev_page()
-    with col2:
-        if st.button("Next"):
-            next_page()
-
-# **頁面 4：結束頁面**
-elif st.session_state.page == 4:
-    st.title("Final Page")
-    st.write("(Empty Page)")
-
-    if st.button("Restart"):
-        st.session_state.page = 1
-
-
 # In[17]:
 
 
@@ -422,9 +348,13 @@ def plot_shape_composition_bar(ratios):
 # In[8]:
 
 
+import streamlit as st
+import streamlit.components.v1 as components
+from PIL import Image
+
 def inject_ga():
     """Inject Google Analytics tracking code into the Streamlit app."""
-    GA_TRACKING_ID = "G-4QWR3D46SD"  # 你的 Google Analytics 代碼
+    GA_TRACKING_ID = "G-4QWR3D46SD"
     ga_code = f"""
     <script async src="https://www.googletagmanager.com/gtag/js?id={GA_TRACKING_ID}"></script>
     <script>
@@ -436,23 +366,30 @@ def inject_ga():
     """
     components.html(ga_code, height=0)
 
+# 初始化 Session State
+if "page" not in st.session_state:
+    st.session_state.page = 1
+
+def next_page():
+    st.session_state.page += 1
+
+def prev_page():
+    st.session_state.page -= 1
+
 def upload_image():
-    """
-    顯示上傳圖片區域，並確保它出現在封面圖片下方。
-    """
-    st.image("cover_image.jpg", use_column_width=True)  # 顯示封面圖片
-    st.header("PEM Analysis")
+    """顯示上傳圖片區域，並確保它出現在封面圖片下方。"""
+    st.image("cover_image.jpg", use_container_width=True)  # 確保封面圖片最上面
+    st.title("PEM Analysis")  # 設定標題，確保只有一個
+    
     uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"], key="image_upload")
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
         st.session_state.image = image  # 存儲圖片供後續處理
-        st.image(image, caption="Uploaded Image", use_column_width=True)
+        st.image(image, caption="Uploaded Image", use_container_width=True)
         st.success("Image uploaded successfully! Proceed to analysis.")
 
 def show_user_guide():
-    """
-    在側邊欄顯示用戶指南。
-    """
+    """在側邊欄顯示用戶指南。"""
     st.sidebar.header("User Guide")
     guide_text = (
         "1. Click **'Upload Image'** to select an image file (JPG, PNG).\n"
@@ -469,12 +406,35 @@ def show_user_guide():
     st.sidebar.info(guide_text)
 
 def main():
-    """
-    主函式，負責顯示頁面內容，並確保 next 按鈕在螢幕右下角。
-    """
+    """主函式，負責顯示頁面內容，並確保 next 按鈕在螢幕右下角。"""
     inject_ga()
     show_user_guide()
-    upload_image()
+    
+    if st.session_state.page == 1:
+        upload_image()
+    
+    elif st.session_state.page == 2:
+        st.title("PEM Analysis - Results")
+        if "image" in st.session_state:
+            st.image(st.session_state.image, caption="Processed Image", use_container_width=True)
+        fig, ax = plt.subplots(figsize=(4, 4))
+        ax.hist([0.1, 0.3, 0.5, 0.7, 0.9], bins=10, range=(0, 1), edgecolor="black")
+        ax.set_title("TPB confidence distribution")
+        ax.set_xlabel("Confidence score")
+        ax.set_ylabel("Number of TPB candidates")
+        st.pyplot(fig)
+    
+    elif st.session_state.page == 3:
+        st.title("Morphology Analysis")
+        if "image" in st.session_state:
+            st.image(st.session_state.image, caption="Morphology Processed Image", use_container_width=True)
+        st.write("Shape composition analysis will be displayed here.")
+    
+    elif st.session_state.page == 4:
+        st.title("Final Page")
+        st.write("(Empty Page)")
+        if st.button("Restart"):
+            st.session_state.page = 1
     
     # 讓 Next 按鈕固定在右下角
     st.markdown(
@@ -490,13 +450,16 @@ def main():
         unsafe_allow_html=True
     )
     
-    # 顯示下一頁按鈕
-    if st.button("Next", key="next_button", help="Go to next step"):
-        st.session_state.page = 2  # 跳轉到下一頁
+    col1, col2 = st.columns([1, 5])
+    with col1:
+        if st.session_state.page > 1 and st.button("Previous", key="prev_button"):
+            prev_page()
     
-    st.markdown('<div class="next-button">', unsafe_allow_html=True)
-    st.button("Next", key="next_button_fixed")
-    st.markdown('</div>', unsafe_allow_html=True)
+    with col2:
+        st.markdown('<div class="next-button">', unsafe_allow_html=True)
+        if st.session_state.page < 4 and st.button("Next", key="next_button", help="Go to next step"):
+            next_page()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
