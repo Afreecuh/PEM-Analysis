@@ -23,65 +23,93 @@ import time
 
 
 def estimate_pixel_to_um(image):
-    """ OCR 讀取比例尺數值 """
+    """
+    解析圖片中的比例尺資訊（OCR + 手動輸入選項）。
+    """
     img_array = np.array(image)
     gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    
+    # OCR 讀取比例尺數值
     text = pytesseract.image_to_string(gray, config="--psm 6")
+    
+    # 嘗試解析 OCR 結果
     match = re.search(r"([\d.]+)\s*(µm|nm|mm)", text, re.IGNORECASE)
+    scale_bar_length = None
+    
     if match:
         scale_bar_length = float(match.group(1))
         unit = match.group(2).lower()
         if unit == "nm":
-            scale_bar_length /= 1000
+            scale_bar_length /= 1000  # 轉換成 µm
         elif unit == "mm":
-            scale_bar_length *= 1000
-        return scale_bar_length / img_array.shape[1]
-    return None
+            scale_bar_length *= 1000  # 轉換成 µm
+    
+    # 顯示 OCR 讀取結果
+    if scale_bar_length:
+        st.success(f"OCR 讀取比例尺: {scale_bar_length} µm")
+    else:
+        st.warning("無法自動讀取比例尺，請手動輸入。")
+
+    # 提供手動輸入比例尺
+    scale_text = st.text_input("或手動輸入比例尺長度 (µm)", value=str(scale_bar_length) if scale_bar_length else "")
+
+    if st.button("確認比例尺"):
+        try:
+            scale_length_um = float(scale_text)
+            st.session_state.scale_length_um = scale_length_um
+            st.success(f"比例尺設定成功: {scale_length_um} µm")
+        except ValueError:
+            st.error("請輸入有效的數字。")
 
 def clean_ocr_text(ocr_text):
     """
     清理 OCR 讀取的文字，移除雜訊和特殊字符，確保格式統一
     """
-    # 移除特殊字符和多餘空格
     cleaned_text = re.sub(r"[^0-9a-zA-Zµm]", "", ocr_text)
     return cleaned_text
 
 def select_scale_region(image):
     """
-    讓用戶選取比例尺區域，使用 OCR 讀取比例尺標示。
+    讓用戶手動選取比例尺區域，並使用 OCR 讀取比例尺標示。
     """
     st.subheader("請選取比例尺區域")
-    if "image" in st.session_state:
-        st.image(st.session_state.image, caption="請選擇比例尺區域", use_container_width=True)
-    
-        # OCR 自動解析比例尺
-        gray = cv2.cvtColor(np.array(st.session_state.image), cv2.COLOR_RGB2GRAY)
-        ocr_text = pytesseract.image_to_string(gray, config="--psm 6")
-        cleaned_text = clean_ocr_text(ocr_text)
+    img_array = np.array(image)
 
-        # 解析比例尺數值
-        match = re.search(r"([\d.]+)\s*(µm|nm|mm)", cleaned_text)
-        scale_length_um = None
-        
-        if match:
-            scale_length_um = float(match.group(1))
-            unit = match.group(2)
-            if unit == "nm":
-                scale_length_um /= 1000  # 轉換成 µm
-            elif unit == "mm":
-                scale_length_um *= 1000  # 轉換成 µm
-            st.success(f"自動解析比例尺: {scale_length_um} µm")
-        
-        # 提供手動輸入選項
-        scale_text = st.text_input("或手動輸入比例尺長度 (µm)", value=str(scale_length_um) if scale_length_um else "")
+    # 讓用戶選擇比例尺的 Y 軸範圍
+    height = img_array.shape[0]
+    y_start, y_end = st.slider("選取比例尺區域 (Y 軸)", 0, height, (height - 50, height), step=5)
 
-        if st.button("確定比例尺"):
-            try:
-                scale_length_um = float(scale_text)
-                st.session_state.scale_length_um = scale_length_um
-                st.success(f"比例尺設定成功: {scale_length_um} µm")
-            except ValueError:
-                st.error("請輸入有效的數字。")
+    # 擷取選取的區域
+    scale_region = img_array[y_start:y_end, :]
+    gray = cv2.cvtColor(scale_region, cv2.COLOR_RGB2GRAY)
+
+    # OCR 讀取比例尺數據
+    ocr_text = pytesseract.image_to_string(gray, config="--psm 6")
+    cleaned_text = clean_ocr_text(ocr_text)
+
+    # 解析比例尺數值
+    match = re.search(r"([\d.]+)\\s*(µm|nm|mm)", cleaned_text)
+    scale_length_um = None
+
+    if match:
+        scale_length_um = float(match.group(1))
+        unit = match.group(2)
+        if unit == "nm":
+            scale_length_um /= 1000  # 轉換成 µm
+        elif unit == "mm":
+            scale_length_um *= 1000  # 轉換成 µm
+        st.success(f"自動解析比例尺: {scale_length_um} µm")
+
+    # 提供手動輸入選項
+    scale_text = st.text_input("或手動輸入比例尺長度 (µm)", value=str(scale_length_um) if scale_length_um else "")
+
+    if st.button("確定比例尺"):
+        try:
+            scale_length_um = float(scale_text)
+            st.session_state.scale_length_um = scale_length_um
+            st.success(f"比例尺設定成功: {scale_length_um} µm")
+        except ValueError:
+            st.error("請輸入有效的數字。")
 
 
 # In[6]:
@@ -439,9 +467,22 @@ def main():
         unsafe_allow_html=True
     )
     
-    st.markdown('<div class="next-button">', unsafe_allow_html=True)
-    if st.session_state.page < 4 and st.button("Next", key="next_button", help="Go to next step"):
-        next_page()
+    st.markdown(
+        """
+        <style>
+        .next-button-container {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 10px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown('<div class="next-button-container">', unsafe_allow_html=True)
+    if st.button("Next", key="next_button", help="Go to next step"):
+        st.session_state.page += 1
     st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
