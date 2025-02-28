@@ -400,15 +400,21 @@ def upload_and_mark_scale():
         st.session_state.image = Image.open(uploaded_file)  # 存入 Session State
         st.success("✅ Image uploaded successfully! Please mark the scale.")
 
-        # **顯示圖片 + 標註功能**
+        # **顯示圖片**
         fig = plot_image_with_annotations()
-        clicked = st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
 
-        # **模擬用戶點擊**（需從 Plotly 事件取得座標）
-        if clicked is not None:
-            click_x = clicked["points"][0]["x"]
-            click_y = clicked["points"][0]["y"]
-            update_coords(click_x, click_y)
+        # **手動輸入點擊座標**
+        st.write("請手動輸入兩個點的 `X` 座標：")
+        x1 = st.number_input("第一點 X 座標", min_value=0, step=1, key="x1_input")
+        x2 = st.number_input("第二點 X 座標", min_value=0, step=1, key="x2_input")
+
+        if st.button("標註比例尺"):
+            if x1 != x2:  # 確保兩點不同
+                st.session_state.scale_coords = [(x1, 0), (x2, 0)]
+                st.success(f"✅ 你已選取比例尺範圍: {abs(x2 - x1):.2f} px")
+            else:
+                st.error("⚠️ 兩個 X 座標不能相同，請重新輸入！")
 
         # **處理比例尺標註與計算 µm/px**
         handle_scale_annotation()
