@@ -20,20 +20,29 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 
-# In[3]:
+# In[1]:
 
 
-# 儲存用戶點選的比例尺座標
+# **初始化 Session State**
 if "scale_coords" not in st.session_state:
-    st.session_state["scale_coords"] = []
+    st.session_state.scale_coords = []
+if "scale_pixels" not in st.session_state:
+    st.session_state.scale_pixels = None
+if "scale_length_um" not in st.session_state:
+    st.session_state.scale_length_um = None
+if "pixel_to_um" not in st.session_state:
+    st.session_state.pixel_to_um = None
+if "image" not in st.session_state:
+    st.session_state.image = None
 
-def plot_image_with_annotations(image_path):
-    """使用 Plotly 顯示圖片，並讓用戶點擊標註比例尺範圍"""
-    image = Image.open(image_path)
+# **顯示圖片並讓用戶標註比例尺**
+def plot_image_with_annotations():
+    """顯示圖片，並讓用戶點擊標註比例尺範圍"""
+    image = st.session_state.image
     fig = px.imshow(np.array(image))
 
-    # 添加標註點
-    for coord in st.session_state["scale_coords"]:
+    # **添加標註點**
+    for coord in st.session_state.scale_coords:
         fig.add_trace(go.Scatter(
             x=[coord[0]],
             y=[coord[1]],
@@ -42,48 +51,42 @@ def plot_image_with_annotations(image_path):
             name="標註點"
         ))
 
-    fig.update_layout(dragmode="drawopenpath")
+    fig.update_layout(dragmode=False)  # 關閉拖曳功能
     return fig
 
-# Streamlit 介面
-st.title("比例尺標註工具（適用於 Streamlit Cloud）")
-st.write("請上傳圖片，然後在圖片上點擊 **兩個點** 來標註比例尺長度，並輸入實際 µm 長度")
-
 # **步驟 1：上傳圖片**
-uploaded_file = st.file_uploader("上傳圖片", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
 
 if uploaded_file:
-    # **儲存上傳的圖片**
-    image_path = "temp_uploaded_image.png"
-    with open(image_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
+    # **儲存圖片**
+    image = Image.open(uploaded_file)
+    st.session_state.image = image  # 存入 Session State
 
-    # **顯示圖片（用 Plotly）**
-    st.session_state["scale_coords"] = []  # 清空之前的標註點
-    fig = plot_image_with_annotations(image_path)
+    # **顯示圖片**
+    fig = plot_image_with_annotations()
     selected_points = st.plotly_chart(fig, use_container_width=True)
 
-    # **步驟 2：用戶點擊圖片來選取比例尺範圍**
-    st.write("請在上方圖片點擊兩個點來標註比例尺範圍（水平距離）")
+    # **步驟 2：用戶點擊圖片來標註比例尺範圍**
+    st.write("請在圖片上點擊 **兩個點** 來標註比例尺長度")
 
-    # **檢查是否已選取兩個點**
-    if len(st.session_state["scale_coords"]) == 2:
-        x1, y1 = st.session_state["scale_coords"][0]
-        x2, y2 = st.session_state["scale_coords"][1]
+    if len(st.session_state.scale_coords) == 2:
+        x1, y1 = st.session_state.scale_coords[0]
+        x2, y2 = st.session_state.scale_coords[1]
+        scale_pixels = abs(x2 - x1)  # **只計算 X 方向的距離**
+        st.session_state.scale_pixels = scale_pixels
+
+        st.success(f"✅ 你已選取比例尺範圍: {scale_pixels:.2f} px")
         
-        # 只計算 X 方向的像素長度
-        scale_pixels = abs(x2 - x1)
-
-        st.success(f"你標註的比例尺長度（像素）: {scale_pixels:.2f} px")
-
-        # **步驟 3：用戶輸入實際比例尺長度**
+        # **步驟 3：用戶輸入比例尺的實際長度**
         scale_length_input = st.text_input("請輸入比例尺的實際長度 (µm):", "10")
 
         if st.button("計算 µm/px"):
             try:
                 scale_length_um = float(scale_length_input)
+                st.session_state.scale_length_um = scale_length_um
                 pixel_to_um = scale_length_um / scale_pixels
-                st.success(f"📏 解析比例尺: {scale_length_um:.2f} µm（{pixel_to_um:.4f} µm/px）")
+                st.session_state.pixel_to_um = pixel_to_um
+                st.success(f"📏 計算結果: {scale_length_um:.2f} µm（{pixel_to_um:.4f} µm/px）")
             except ValueError:
                 st.error("⚠️ 輸入格式錯誤，請輸入數字")
 
@@ -394,51 +397,28 @@ def plot_image_with_annotations(image_path):
     fig.update_layout(dragmode="drawopenpath")
     return fig
 
-# **頁面 1：上傳圖片與比例尺標註**
+# **頁面 1：上傳圖片**
 def upload_image():
-    st.image("cover_image.jpg", use_container_width=True)
-    st.title("PEM Analysis")
+    inject_ga()  # **確保 Google Analytics 被執行**
+    
+    st.title("PEM Analysis")  # **只保留這個標題**
+    
+    # **側邊欄使用者指南**
+    st.sidebar.header("User Guide")
+    guide_text = (
+        "1. Upload an image.\n"
+        "2. Click two points on the image to mark the scale.\n"
+        "3. Enter the actual scale length (µm).\n"
+        "4. The system calculates **µm/px** automatically.\n"
+        "5. Navigate between pages using the buttons below."
+    )
+    st.sidebar.info(guide_text)
 
+    # **上傳圖片區塊**
     uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"], key="image_upload")
 
     if uploaded_file:
-        image = Image.open(uploaded_file)
-        st.session_state.image = image  # 存儲圖片
-        st.success("Image uploaded successfully! Please mark the scale.")
-
-        # 儲存圖片
-        image_path = "temp_uploaded_image.png"
-        with open(image_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-
-        # **顯示圖片，讓用戶點擊標註比例尺**
-        fig = plot_image_with_annotations(image_path)
-        selected_points = st.plotly_chart(fig, use_container_width=True)
-
-        # **步驟 2：用戶標註比例尺**
-        st.write("請在圖片上點擊 **兩個點** 來標註比例尺範圍（水平長度）")
-
-        # **檢查是否已選取兩個點**
-        if len(st.session_state["scale_coords"]) == 2:
-            x1, y1 = st.session_state["scale_coords"][0]
-            x2, y2 = st.session_state["scale_coords"][1]
-            scale_pixels = abs(x2 - x1)  # **只計算 X 方向的距離**
-            st.session_state.scale_pixels = scale_pixels
-
-            st.success(f"你標註的比例尺長度（像素）: {scale_pixels:.2f} px")
-
-            # **步驟 3：用戶輸入比例尺的實際長度**
-            scale_length_input = st.text_input("請輸入比例尺的實際長度 (µm):", "10")
-
-            if st.button("計算 µm/px"):
-                try:
-                    scale_length_um = float(scale_length_input)
-                    st.session_state.scale_length_um = scale_length_um
-                    pixel_to_um = scale_length_um / scale_pixels
-                    st.session_state.pixel_to_um = pixel_to_um
-                    st.success(f"📏 解析比例尺: {scale_length_um:.2f} µm（{pixel_to_um:.4f} µm/px）")
-                except ValueError:
-                    st.error("⚠️ 輸入格式錯誤，請輸入數字")
+        st.success("✅ Image uploaded successfully! Please proceed to the next step.")
 
 # **頁面 2：TPB 分析結果**
 def show_tpb_results():
