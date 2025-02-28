@@ -36,12 +36,13 @@ if "image" not in st.session_state:
     st.session_state.image = None
 
 # **用戶點擊時更新標註點**
-def on_click(event):
+def update_coords(click_x, click_y):
     """記錄用戶點擊的座標，最多允許兩個點"""
     if len(st.session_state.scale_coords) < 2:
-        st.session_state.scale_coords.append((event.xdata, event.ydata))
+        st.session_state.scale_coords.append((click_x, click_y))
+        st.experimental_rerun()  # 讓 UI 重新更新，顯示紅點
     else:
-        st.warning("⚠️ 已選取兩個點，請勿再點擊！")
+        st.warning("⚠️ 已標註兩個點，請輸入比例尺長度！")
 
 # **顯示圖片並讓用戶標註比例尺**
 def plot_image_with_annotations():
@@ -59,7 +60,6 @@ def plot_image_with_annotations():
             name="標註點"
         ))
 
-    fig.update_layout(dragmode=False)  # 關閉拖曳功能
     return fig
 
 # **處理比例尺標註與計算 µm/px**
@@ -339,9 +339,6 @@ def plot_shape_composition_bar(ratios):
 # In[8]:
 
 
-import streamlit as st
-import streamlit.components.v1 as components
-
 # **Google Analytics 追蹤碼**
 def inject_ga():
     """Inject Google Analytics tracking code into the Streamlit app."""
@@ -405,7 +402,13 @@ def upload_and_mark_scale():
 
         # **顯示圖片 + 標註功能**
         fig = plot_image_with_annotations()
-        st.plotly_chart(fig, use_container_width=True)
+        clicked = st.plotly_chart(fig, use_container_width=True)
+
+        # **模擬用戶點擊**（需從 Plotly 事件取得座標）
+        if clicked is not None:
+            click_x = clicked["points"][0]["x"]
+            click_y = clicked["points"][0]["y"]
+            update_coords(click_x, click_y)
 
         # **處理比例尺標註與計算 µm/px**
         handle_scale_annotation()
@@ -423,7 +426,7 @@ def main():
                 st.session_state.page -= 1
     with col2:
         if st.session_state.page < 4:
-            if st.button("Next"):
+            if st.button("Next", disabled=len(st.session_state.scale_coords) < 2):
                 st.session_state.page += 1
 
 if __name__ == "__main__":
