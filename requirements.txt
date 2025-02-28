@@ -6,7 +6,4 @@ pillow
 pytesseract
 matplotlib
 networkx
-easyocr
-torch
-torchvision
-numpy
+plotly
