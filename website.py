@@ -35,6 +35,14 @@ if "pixel_to_um" not in st.session_state:
 if "image" not in st.session_state:
     st.session_state.image = None
 
+# **用戶點擊時更新標註點**
+def on_click(event):
+    """記錄用戶點擊的座標，最多允許兩個點"""
+    if len(st.session_state.scale_coords) < 2:
+        st.session_state.scale_coords.append((event.xdata, event.ydata))
+    else:
+        st.warning("⚠️ 已選取兩個點，請勿再點擊！")
+
 # **顯示圖片並讓用戶標註比例尺**
 def plot_image_with_annotations():
     """顯示圖片，並讓用戶點擊標註比例尺範圍"""
