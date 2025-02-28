@@ -336,7 +336,7 @@ def plot_shape_composition_bar(ratios):
     return fig
 
 
-# In[8]:
+# In[3]:
 
 
 # **Google Analytics 追蹤碼**
@@ -405,19 +405,25 @@ def upload_and_mark_scale():
         st.plotly_chart(fig, use_container_width=True)
 
         # **手動輸入點擊座標**
-        st.write("請手動輸入兩個點的 `X` 座標：")
-        x1 = st.number_input("第一點 X 座標", min_value=0, step=1, key="x1_input")
-        x2 = st.number_input("第二點 X 座標", min_value=0, step=1, key="x2_input")
+        st.write("請手動輸入兩個點的座標（X 和 Y）：")
+        col1, col2 = st.columns(2)
+        with col1:
+            x1 = st.number_input("第一點 X 座標", min_value=0, step=1, key="x1_input")
+            x2 = st.number_input("第二點 X 座標", min_value=0, step=1, key="x2_input")
+        with col2:
+            y1 = st.number_input("第一點 Y 座標", min_value=0, step=1, key="y1_input")
+            y2 = st.number_input("第二點 Y 座標", min_value=0, step=1, key="y2_input")
 
         if st.button("標註比例尺"):
             if x1 != x2:  # 確保兩點不同
-                st.session_state.scale_coords = [(x1, 0), (x2, 0)]
+                st.session_state.scale_coords = [(x1, y1), (x2, y2)]
                 st.success(f"✅ 你已選取比例尺範圍: {abs(x2 - x1):.2f} px")
             else:
                 st.error("⚠️ 兩個 X 座標不能相同，請重新輸入！")
 
         # **處理比例尺標註與計算 µm/px**
         handle_scale_annotation()
+
 
 # **主函式**
 def main():
