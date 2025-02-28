@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[3]:
+# In[1]:
 
 
 import streamlit as st
@@ -12,83 +12,83 @@ import networkx as nx
 from PIL import Image
 import matplotlib.pyplot as plt
 import re
-import pytesseract
 import streamlit.components.v1 as components
 import io
 import math
 import time
+import plotly.express as px
+import plotly.graph_objects as go
 
 
-# In[4]:
+# In[3]:
 
 
-def estimate_pixel_to_um(image):
-    """
-    使用 OCR 讀取比例尺數值，嘗試解析 µm/px。
-    若 OCR 失敗，則要求用戶手動框選比例尺區域或手動輸入數值。
-    """
-    st.subheader("📏 OCR 自動解析比例尺")
-    default_pixel_to_um = None  # 初始狀態
-    img_array = np.array(image)
-    gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+# 儲存用戶點選的比例尺座標
+if "scale_coords" not in st.session_state:
+    st.session_state["scale_coords"] = []
 
-    # OCR 讀取比例尺數值
-    text = pytesseract.image_to_string(gray, config="--psm 6")
+def plot_image_with_annotations(image_path):
+    """使用 Plotly 顯示圖片，並讓用戶點擊標註比例尺範圍"""
+    image = Image.open(image_path)
+    fig = px.imshow(np.array(image))
 
-    # 嘗試解析 OCR 結果
-    match = re.search(r"([\d.]+)\s*(µm|nm|mm)", text, re.IGNORECASE)
-    if match:
-        scale_bar_length = float(match.group(1))
-        unit = match.group(2).lower()
-        if unit == "nm":
-            scale_bar_length /= 1000  # 轉換成 µm
-        elif unit == "mm":
-            scale_bar_length *= 1000  # 轉換成 µm
+    # 添加標註點
+    for coord in st.session_state["scale_coords"]:
+        fig.add_trace(go.Scatter(
+            x=[coord[0]],
+            y=[coord[1]],
+            mode="markers",
+            marker=dict(color="red", size=10),
+            name="標註點"
+        ))
 
-        pixel_to_um = scale_bar_length / img_array.shape[1]  # 計算 µm/px
-        st.session_state.pixel_to_um = pixel_to_um  # 存儲結果
+    fig.update_layout(dragmode="drawopenpath")
+    return fig
 
-        # 顯示 OCR 讀取結果
-        st.success(f"📏 自動解析比例尺: {scale_bar_length} µm，換算為 {pixel_to_um:.4f} µm/px")
-        return pixel_to_um
-    else:
-        st.warning("❌ 無法解析比例尺，請嘗試手動框選區域或輸入數值")
-        return None
+# Streamlit 介面
+st.title("比例尺標註工具（適用於 Streamlit Cloud）")
+st.write("請上傳圖片，然後在圖片上點擊 **兩個點** 來標註比例尺長度，並輸入實際 µm 長度")
 
-def select_scale_region():
-    """
-    讓用戶手動框選比例尺區域，當 OCR 失敗時使用此功能。
-    """
-    st.subheader("🔍 手動選取比例尺區域")
-    st.text("請使用滑鼠框選比例尺範圍，並輸入比例尺數值")
+# **步驟 1：上傳圖片**
+uploaded_file = st.file_uploader("上傳圖片", type=["jpg", "jpeg", "png"])
 
-    # 顯示原始圖片
-    if "image" in st.session_state:
-        st.image(st.session_state.image, caption="請框選比例尺區域", use_column_width=True)
+if uploaded_file:
+    # **儲存上傳的圖片**
+    image_path = "temp_uploaded_image.png"
+    with open(image_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
 
-        # 提供滑動條來手動選擇區域
-        x1 = st.slider("選擇 X1 (起點)", 0, st.session_state.image.width, 0)
-        x2 = st.slider("選擇 X2 (終點)", 0, st.session_state.image.width, st.session_state.image.width)
-        y1 = st.slider("選擇 Y1 (起點)", 0, st.session_state.image.height, int(st.session_state.image.height * 0.9))
-        y2 = st.slider("選擇 Y2 (終點)", 0, st.session_state.image.height, st.session_state.image.height)
+    # **顯示圖片（用 Plotly）**
+    st.session_state["scale_coords"] = []  # 清空之前的標註點
+    fig = plot_image_with_annotations(image_path)
+    selected_points = st.plotly_chart(fig, use_container_width=True)
 
-        # 計算框選區域的寬度（像素）
-        selected_width = abs(x2 - x1)
+    # **步驟 2：用戶點擊圖片來選取比例尺範圍**
+    st.write("請在上方圖片點擊兩個點來標註比例尺範圍（水平距離）")
 
-        # 提供輸入比例尺的長度
-        scale_text = st.text_input("請輸入比例尺長度 (µm)", value="10")
+    # **檢查是否已選取兩個點**
+    if len(st.session_state["scale_coords"]) == 2:
+        x1, y1 = st.session_state["scale_coords"][0]
+        x2, y2 = st.session_state["scale_coords"][1]
+        
+        # 只計算 X 方向的像素長度
+        scale_pixels = abs(x2 - x1)
 
-        if st.button("確定比例尺"):
+        st.success(f"你標註的比例尺長度（像素）: {scale_pixels:.2f} px")
+
+        # **步驟 3：用戶輸入實際比例尺長度**
+        scale_length_input = st.text_input("請輸入比例尺的實際長度 (µm):", "10")
+
+        if st.button("計算 µm/px"):
             try:
-                scale_length_um = float(scale_text)
-                pixel_to_um = scale_length_um / selected_width
-                st.session_state.pixel_to_um = pixel_to_um
-                st.success(f"✅ 手動設定比例尺: {scale_length_um} µm，換算為 {pixel_to_um:.4f} µm/px")
+                scale_length_um = float(scale_length_input)
+                pixel_to_um = scale_length_um / scale_pixels
+                st.success(f"📏 解析比例尺: {scale_length_um:.2f} µm（{pixel_to_um:.4f} µm/px）")
             except ValueError:
-                st.error("❌ 請輸入有效的數字")
+                st.error("⚠️ 輸入格式錯誤，請輸入數字")
 
 
-# In[6]:
+# In[5]:
 
 
 # 使用 Otsu + 形態學處理進行圖像分割
@@ -341,7 +341,6 @@ def plot_shape_composition_bar(ratios):
 # In[8]:
 
 
-# **Google Analytics 追蹤碼**
 def inject_ga():
     """Inject Google Analytics tracking code into the Streamlit app."""
     GA_TRACKING_ID = "G-4QWR3D46SD"
@@ -359,8 +358,14 @@ def inject_ga():
 # **初始化 Session State**
 if "page" not in st.session_state:
     st.session_state.page = 1
+if "scale_coords" not in st.session_state:
+    st.session_state.scale_coords = []
 if "pixel_to_um" not in st.session_state:
     st.session_state.pixel_to_um = None
+if "scale_pixels" not in st.session_state:
+    st.session_state.scale_pixels = None
+if "scale_length_um" not in st.session_state:
+    st.session_state.scale_length_um = None
 if "image" not in st.session_state:
     st.session_state.image = None
 
@@ -370,9 +375,27 @@ def next_page():
 def prev_page():
     st.session_state.page -= 1
 
-# **頁面 1：上傳圖片與比例尺解析**
+# **用戶標註比例尺功能**
+def plot_image_with_annotations(image_path):
+    """顯示圖片，並讓用戶點擊兩個點來標註比例尺"""
+    image = Image.open(image_path)
+    fig = px.imshow(np.array(image))
+
+    # 添加標註點
+    for coord in st.session_state["scale_coords"]:
+        fig.add_trace(go.Scatter(
+            x=[coord[0]],
+            y=[coord[1]],
+            mode="markers",
+            marker=dict(color="red", size=10),
+            name="標註點"
+        ))
+
+    fig.update_layout(dragmode="drawopenpath")
+    return fig
+
+# **頁面 1：上傳圖片與比例尺標註**
 def upload_image():
-    """顯示上傳圖片區域，確保它出現在封面圖片下方，執行 OCR 並允許手動輸入比例尺。"""
     st.image("cover_image.jpg", use_container_width=True)
     st.title("PEM Analysis")
 
@@ -380,26 +403,55 @@ def upload_image():
 
     if uploaded_file:
         image = Image.open(uploaded_file)
-        st.session_state.image = image  # 存儲圖片供後續處理
-        st.success("Image uploaded successfully! Proceed to analysis.")
+        st.session_state.image = image  # 存儲圖片
+        st.success("Image uploaded successfully! Please mark the scale.")
 
-        # **OCR 讀取比例尺**
-        pixel_to_um = estimate_pixel_to_um(image)
+        # 儲存圖片
+        image_path = "temp_uploaded_image.png"
+        with open(image_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
 
-        # **顯示 OCR 讀取結果**
-        if pixel_to_um is not None:
-            st.session_state.pixel_to_um = pixel_to_um
-            st.info(f"OCR 解析比例尺: **1 pixel ≈ {pixel_to_um:.4f} µm**")
-        else:
-            st.warning("⚠️ 無法自動解析比例尺，請手動選擇比例尺區域！")
-            select_scale_region()
+        # **顯示圖片，讓用戶點擊標註比例尺**
+        fig = plot_image_with_annotations(image_path)
+        selected_points = st.plotly_chart(fig, use_container_width=True)
+
+        # **步驟 2：用戶標註比例尺**
+        st.write("請在圖片上點擊 **兩個點** 來標註比例尺範圍（水平長度）")
+
+        # **檢查是否已選取兩個點**
+        if len(st.session_state["scale_coords"]) == 2:
+            x1, y1 = st.session_state["scale_coords"][0]
+            x2, y2 = st.session_state["scale_coords"][1]
+            scale_pixels = abs(x2 - x1)  # **只計算 X 方向的距離**
+            st.session_state.scale_pixels = scale_pixels
+
+            st.success(f"你標註的比例尺長度（像素）: {scale_pixels:.2f} px")
+
+            # **步驟 3：用戶輸入比例尺的實際長度**
+            scale_length_input = st.text_input("請輸入比例尺的實際長度 (µm):", "10")
+
+            if st.button("計算 µm/px"):
+                try:
+                    scale_length_um = float(scale_length_input)
+                    st.session_state.scale_length_um = scale_length_um
+                    pixel_to_um = scale_length_um / scale_pixels
+                    st.session_state.pixel_to_um = pixel_to_um
+                    st.success(f"📏 解析比例尺: {scale_length_um:.2f} µm（{pixel_to_um:.4f} µm/px）")
+                except ValueError:
+                    st.error("⚠️ 輸入格式錯誤，請輸入數字")
 
 # **頁面 2：TPB 分析結果**
 def show_tpb_results():
     st.title("PEM Analysis - Results")
     if "image" in st.session_state and st.session_state.image is not None:
         st.image(st.session_state.image, caption="Processed Image", use_container_width=True)
-    
+
+    # **顯示 µm/px**
+    if "pixel_to_um" in st.session_state and st.session_state.pixel_to_um is not None:
+        st.info(f"📏 解析比例尺: **1 pixel ≈ {st.session_state.pixel_to_um:.4f} µm**")
+
+    # **繪製 TPB 信心分佈圖**
+    import matplotlib.pyplot as plt
     fig, ax = plt.subplots(figsize=(4, 4))
     ax.hist([0.1, 0.3, 0.5, 0.7, 0.9], bins=10, range=(0, 1), edgecolor="black")
     ax.set_title("TPB confidence distribution")
@@ -425,52 +477,30 @@ def show_final_page():
 def show_user_guide():
     st.sidebar.header("User Guide")
     guide_text = (
-        "1. Click **'Upload Image'** to select an image file (JPG, PNG).\n"
-        "2. The system will process the image and display:\n"
-        "   - Original Image\n"
-        "   - Processed Image\n"
-        "   - TPB Confidence Distribution Map\n"
-        "3. Use the navigation buttons to switch between pages:\n"
-        "   - **Page 2**: TPB Analysis Results\n"
-        "   - **Page 3**: Morphology Analysis\n"
-        "4. For the best results, ensure that the uploaded image is **clear and high-resolution**.\n"
-        "5. The user guide is always available for reference."
+        "1. Click **'Upload Image'** to select an image file.\n"
+        "2. Click two points on the image to mark the scale.\n"
+        "3. Enter the actual scale length (µm).\n"
+        "4. The system calculates **µm/px** automatically.\n"
+        "5. Navigate between pages using the buttons below."
     )
     st.sidebar.info(guide_text)
 
 # **主函式**
 def main():
-    """主函式，負責顯示頁面內容，確保 next 按鈕在正確位置，保留 OCR & TPB 分析。"""
     inject_ga()
     show_user_guide()
     
     if st.session_state.page == 1:
         upload_image()
-
     elif st.session_state.page == 2:
         show_tpb_results()
-
     elif st.session_state.page == 3:
         show_morphology_analysis()
-
     elif st.session_state.page == 4:
         show_final_page()
 
-    # **按鈕佈局：Previous 在左，Next 在右**
-    col1, col2 = st.columns([1, 5])
-
-    with col1:
-        if st.session_state.page > 1:  # 第一頁隱藏 Previous
-            if st.button("Previous", key="prev_button"):
-                prev_page()
-
-    with col2:
-        if st.session_state.page < 4:  # 不是最後一頁才顯示 Next
-            if st.button("Next", key="next_button", help="Go to next step"):
-                next_page()
-        else:  # 最後一頁顯示 Restart
-            if st.button("Restart", key="restart_button"):
-                st.session_state.page = 1
+    if st.button("Next", key="next_button"):
+        next_page()
 
 if __name__ == "__main__":
     main()
