@@ -54,21 +54,8 @@ def plot_image_with_annotations():
     fig.update_layout(dragmode=False)  # 關閉拖曳功能
     return fig
 
-# **步驟 1：上傳圖片**
-uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
-
-if uploaded_file:
-    # **儲存圖片**
-    image = Image.open(uploaded_file)
-    st.session_state.image = image  # 存入 Session State
-
-    # **顯示圖片**
-    fig = plot_image_with_annotations()
-    selected_points = st.plotly_chart(fig, use_container_width=True)
-
-    # **步驟 2：用戶點擊圖片來標註比例尺範圍**
-    st.write("請在圖片上點擊 **兩個點** 來標註比例尺長度")
-
+# **處理比例尺標註與計算 µm/px**
+def handle_scale_annotation():
     if len(st.session_state.scale_coords) == 2:
         x1, y1 = st.session_state.scale_coords[0]
         x2, y2 = st.session_state.scale_coords[1]
@@ -77,7 +64,7 @@ if uploaded_file:
 
         st.success(f"✅ 你已選取比例尺範圍: {scale_pixels:.2f} px")
         
-        # **步驟 3：用戶輸入比例尺的實際長度**
+        # **輸入比例尺的實際長度**
         scale_length_input = st.text_input("請輸入比例尺的實際長度 (µm):", "10")
 
         if st.button("計算 µm/px"):
@@ -344,6 +331,10 @@ def plot_shape_composition_bar(ratios):
 # In[8]:
 
 
+import streamlit as st
+import streamlit.components.v1 as components
+
+# **Google Analytics 追蹤碼**
 def inject_ga():
     """Inject Google Analytics tracking code into the Streamlit app."""
     GA_TRACKING_ID = "G-4QWR3D46SD"
@@ -378,31 +369,13 @@ def next_page():
 def prev_page():
     st.session_state.page -= 1
 
-# **用戶標註比例尺功能**
-def plot_image_with_annotations(image_path):
-    """顯示圖片，並讓用戶點擊兩個點來標註比例尺"""
-    image = Image.open(image_path)
-    fig = px.imshow(np.array(image))
-
-    # 添加標註點
-    for coord in st.session_state["scale_coords"]:
-        fig.add_trace(go.Scatter(
-            x=[coord[0]],
-            y=[coord[1]],
-            mode="markers",
-            marker=dict(color="red", size=10),
-            name="標註點"
-        ))
-
-    fig.update_layout(dragmode="drawopenpath")
-    return fig
-
-# **頁面 1：上傳圖片**
-def upload_image():
+# **頁面 1：上傳圖片 + 標註比例尺**
+def upload_and_mark_scale():
     inject_ga()  # **確保 Google Analytics 被執行**
     
-    st.title("PEM Analysis")  # **只保留這個標題**
-    
+    st.image("cover_image.jpg", use_container_width=True)  # **確保封面圖片仍然顯示**
+    st.title("PEM Analysis")  # **保留唯一標題**
+
     # **側邊欄使用者指南**
     st.sidebar.header("User Guide")
     guide_text = (
@@ -414,73 +387,36 @@ def upload_image():
     )
     st.sidebar.info(guide_text)
 
-    # **上傳圖片區塊**
+    # **單一上傳圖片區塊**
     uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"], key="image_upload")
 
     if uploaded_file:
-        st.success("✅ Image uploaded successfully! Please proceed to the next step.")
+        # **儲存圖片**
+        st.session_state.image = Image.open(uploaded_file)  # 存入 Session State
+        st.success("✅ Image uploaded successfully! Please mark the scale.")
 
-# **頁面 2：TPB 分析結果**
-def show_tpb_results():
-    st.title("PEM Analysis - Results")
-    if "image" in st.session_state and st.session_state.image is not None:
-        st.image(st.session_state.image, caption="Processed Image", use_container_width=True)
+        # **顯示圖片 + 標註功能**
+        fig = plot_image_with_annotations()
+        st.plotly_chart(fig, use_container_width=True)
 
-    # **顯示 µm/px**
-    if "pixel_to_um" in st.session_state and st.session_state.pixel_to_um is not None:
-        st.info(f"📏 解析比例尺: **1 pixel ≈ {st.session_state.pixel_to_um:.4f} µm**")
-
-    # **繪製 TPB 信心分佈圖**
-    import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(figsize=(4, 4))
-    ax.hist([0.1, 0.3, 0.5, 0.7, 0.9], bins=10, range=(0, 1), edgecolor="black")
-    ax.set_title("TPB confidence distribution")
-    ax.set_xlabel("Confidence score")
-    ax.set_ylabel("Number of TPB candidates")
-    st.pyplot(fig)
-
-# **頁面 3：形態學分析**
-def show_morphology_analysis():
-    st.title("Morphology Analysis")
-    if "image" in st.session_state and st.session_state.image is not None:
-        st.image(st.session_state.image, caption="Morphology Processed Image", use_container_width=True)
-    st.write("Shape composition analysis will be displayed here.")
-
-# **頁面 4：結束頁面**
-def show_final_page():
-    st.title("Final Page")
-    st.write("(Empty Page)")
-    if st.button("Restart"):
-        st.session_state.page = 1
-
-# **側邊欄使用者指南**
-def show_user_guide():
-    st.sidebar.header("User Guide")
-    guide_text = (
-        "1. Click **'Upload Image'** to select an image file.\n"
-        "2. Click two points on the image to mark the scale.\n"
-        "3. Enter the actual scale length (µm).\n"
-        "4. The system calculates **µm/px** automatically.\n"
-        "5. Navigate between pages using the buttons below."
-    )
-    st.sidebar.info(guide_text)
+        # **處理比例尺標註與計算 µm/px**
+        handle_scale_annotation()
 
 # **主函式**
 def main():
-    inject_ga()
-    show_user_guide()
-    
     if st.session_state.page == 1:
-        upload_image()
-    elif st.session_state.page == 2:
-        show_tpb_results()
-    elif st.session_state.page == 3:
-        show_morphology_analysis()
-    elif st.session_state.page == 4:
-        show_final_page()
+        upload_and_mark_scale()
 
-    if st.button("Next", key="next_button"):
-        next_page()
+    # **頁面導航按鈕**
+    col1, col2 = st.columns([1, 5])
+    with col1:
+        if st.session_state.page > 1:
+            if st.button("Previous"):
+                st.session_state.page -= 1
+    with col2:
+        if st.session_state.page < 4:
+            if st.button("Next"):
+                st.session_state.page += 1
 
 if __name__ == "__main__":
     main()
