@@ -85,6 +85,8 @@ def handle_scale_annotation():
 # In[ ]:
 
 
+from skimage.measure import regionprops, label
+
 def otsu_segmentation():
     inject_ga()
     st.title("Multi-Otsu Thresholding & SEM Analysis")
@@ -148,11 +150,11 @@ def otsu_segmentation():
     
     # **顯示對應的遮罩圖片**
     st.write("### Layer Visualization")
-    for i, label in enumerate(layer_labels):
-        if st.button(f"顯示 {label} 的對應圖片"):
+    for i, label_text in enumerate(layer_labels):
+        if st.button(f"顯示 {label_text} 的對應圖片"):
             fig, ax = plt.subplots(figsize=(6, 6))
             ax.imshow(class_masks[i], cmap="gray")
-            ax.set_title(f"{label} (Layer {i})")
+            ax.set_title(f"{label_text} (Layer {i})")
             ax.axis("off")
             st.pyplot(fig)
     
