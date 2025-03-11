@@ -85,19 +85,17 @@ def handle_scale_annotation():
 # In[ ]:
 
 
-# **Otsu 門檻分割頁面**
 def otsu_segmentation():
     inject_ga()
     st.title("Multi-Otsu Thresholding & SEM Analysis")
     
-    st.sidebar.header("Otsu Segmentation Settings")
-    num_classes = st.sidebar.slider("選擇分割區間數", min_value=2, max_value=5, value=3)
-
-    # **確認是否已經有圖片和比例尺數據**
+    # **固定分割區間數為 5**
+    num_classes = 5  
+    
     if st.session_state.image is None or st.session_state.pixel_to_um is None:
         st.error("⚠️ 請先上傳圖片並設定比例尺！")
         return
-    
+
     image_np = np.array(st.session_state.image.convert("L"))
     pixel_to_um = st.session_state.pixel_to_um
 
@@ -118,8 +116,16 @@ def otsu_segmentation():
     real_physical_sizes = [area * (pixel_to_um ** 2) for area in pixel_areas]
     area_percentages = [(size / total_area) * 100 for size in real_physical_sizes]
 
+    layer_labels = [
+        "Porosity (Holes, Cracks)", 
+        "Pollutants, Sediments", 
+        "Matrix (Base Material)", 
+        "Metallic Particles", 
+        "High-Reflectivity Contaminants"
+    ]
+
     df_analysis = pd.DataFrame({
-        "Layer": [f"Layer {i}" for i in range(num_classes)],
+        "Layer": layer_labels,
         "Pixel Area": pixel_areas,
         "Physical Area (µm²)": real_physical_sizes,
         "Area Percentage (%)": area_percentages
@@ -135,11 +141,11 @@ def otsu_segmentation():
     st.plotly_chart(fig_pie, use_container_width=True)
 
     # **計算額外指標**
-    porosity_ratio = (pixel_areas[0] / total_area) * 100
-    catalyst_areas = pixel_areas[2] + pixel_areas[3]
-    catalyst_percentage = (catalyst_areas / total_area) * 100
-    agglomeration_ratio = (pixel_areas[3] / catalyst_areas) * 100
-    oxidation_ratio = (pixel_areas[4] / total_area) * 100
+    porosity_ratio = (pixel_areas[0] / total_area) * 100 if len(pixel_areas) > 0 else 0
+    catalyst_areas = sum(pixel_areas[2:4]) if len(pixel_areas) > 3 else 0
+    catalyst_percentage = (catalyst_areas / total_area) * 100 if total_area > 0 else 0
+    agglomeration_ratio = (pixel_areas[3] / catalyst_areas) * 100 if len(pixel_areas) > 3 and catalyst_areas > 0 else 0
+    oxidation_ratio = (pixel_areas[4] / total_area) * 100 if len(pixel_areas) > 4 else 0
 
     st.write(f"📌 孔隙率: {porosity_ratio:.2f}%")
     st.write(f"📌 催化劑覆蓋率: {catalyst_percentage:.2f}%")
