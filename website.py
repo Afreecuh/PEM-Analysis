@@ -151,13 +151,13 @@ def otsu_segmentation():
     
     # **顯示對應的遮罩圖片**
     st.write("### Layer Visualization")
-    for i, label_text in enumerate(layer_labels):
-        if st.button(f"顯示 {label_text} 的對應圖片"):
-            fig, ax = plt.subplots(figsize=(6, 6))
-            ax.imshow(class_masks[i], cmap="gray")
-            ax.set_title(f"{label_text} (Layer {i})")
-            ax.axis("off")
-            st.pyplot(fig)
+    selected_layer = st.selectbox("選擇要顯示的 Layer", layer_labels)
+    selected_index = layer_labels.index(selected_layer)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.imshow(class_masks[selected_index], cmap="gray")
+    ax.set_title(f"{selected_layer} (Layer {selected_index})")
+    ax.axis("off")
+    st.pyplot(fig)
     
     fig_pie = px.pie(df_analysis, names="Layer", values="Area Percentage (%)", title="Area Distribution Across Layers")
     st.plotly_chart(fig_pie, use_container_width=True)
