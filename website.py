@@ -40,7 +40,7 @@ def update_coords(click_x, click_y):
     """記錄用戶點擊的座標，最多允許兩個點"""
     if len(st.session_state.scale_coords) < 2:
         st.session_state.scale_coords.append((click_x, click_y))
-        st.experimental_rerun()  # 讓 UI 重新更新，顯示紅點
+        st.rerun()  # 讓 UI 重新更新，顯示紅點
     else:
         st.warning("⚠️ 已標註兩個點，請輸入比例尺長度！")
 
@@ -414,7 +414,7 @@ def upload_and_mark_scale():
             if x1 != x2 or y1 != y2:  # 確保兩點不同
                 st.session_state.scale_coords = [(x1, y1), (x2, y2)]
                 st.success(f"✅ 你已選取比例尺範圍: {abs(x2 - x1):.2f} px")
-                st.experimental_rerun()  # **強制重新繪製紅點**
+                st.rerun()  # **強制重新繪製紅點**
             else:
                 st.error("⚠️ 兩個座標不能完全相同，請重新輸入！")
 
