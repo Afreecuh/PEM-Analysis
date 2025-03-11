@@ -14,6 +14,7 @@ from PIL import Image
 from skimage.filters import threshold_multiotsu
 from skimage.measure import regionprops, label
 import streamlit.components.v1 as components
+import matplotlib.pyplot as plt
 
 
 # In[1]:
