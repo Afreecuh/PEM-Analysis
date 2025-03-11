@@ -103,13 +103,18 @@ def otsu_segmentation():
     thresholds = threshold_multiotsu(image_np, classes=num_classes)
     segmented_image = np.digitize(image_np, bins=thresholds)
 
-    # **顯示結果**
-    fig = px.imshow(segmented_image, color_continuous_scale='gray')
-    fig.update_layout(coloraxis_showscale=False, title="Otsu 分割結果")
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.success(f"門檻值: {thresholds}")
-
+    # **產生分類遮罩並計算統計數據**
+    class_masks = [(segmented_image == i).astype(np.uint8) * 255 for i in range(num_classes)]
+    labeled_masks = [label(mask) for mask in class_masks]  # 標記區域
+    class_properties = [regionprops(labeled_mask) for labeled_mask in labeled_masks]
+    
+    # **計算每個類別的區域統計資訊**
+    num_regions = [len(props) for props in class_properties]
+    avg_area_per_region = [
+        np.mean([prop.area for prop in props]) if len(props) > 0 else 0 
+        for props in class_properties
+    ]
+    
     # **計算面積分析**
     pixel_areas = [(segmented_image == i).sum() for i in range(num_classes)]
     total_area = sum(pixel_areas)
@@ -128,15 +133,29 @@ def otsu_segmentation():
         "Layer": layer_labels,
         "Pixel Area": pixel_areas,
         "Physical Area (µm²)": real_physical_sizes,
-        "Area Percentage (%)": area_percentages
+        "Area Percentage (%)": area_percentages,
+        "Number of Regions": num_regions,
+        "Average Area per Region (px)": avg_area_per_region
     })
 
+    # **顯示表格**
     st.dataframe(df_analysis)
 
-    # **可視化**
+    # **可視化 - 可點擊的 bar chart**
     fig_bar = px.bar(df_analysis, x="Layer", y="Physical Area (µm²)", title="Physical Area of Each Layer")
+    fig_bar.update_traces(customdata=layer_labels, hoverinfo="x+y")
     st.plotly_chart(fig_bar, use_container_width=True)
-
+    
+    # **顯示對應的遮罩圖片**
+    st.write("### Layer Visualization")
+    for i, label in enumerate(layer_labels):
+        if st.button(f"顯示 {label} 的對應圖片"):
+            fig, ax = plt.subplots(figsize=(6, 6))
+            ax.imshow(class_masks[i], cmap="gray")
+            ax.set_title(f"{label} (Layer {i})")
+            ax.axis("off")
+            st.pyplot(fig)
+    
     fig_pie = px.pie(df_analysis, names="Layer", values="Area Percentage (%)", title="Area Distribution Across Layers")
     st.plotly_chart(fig_pie, use_container_width=True)
 
