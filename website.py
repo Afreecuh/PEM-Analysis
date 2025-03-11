@@ -177,6 +177,8 @@ def upload_and_mark_scale():
 def main():
     if st.session_state.page == 1:
         upload_and_mark_scale()
+    elif st.session_state.page == 2:
+        otsu_segmentation()  # 確保執行 Otsu 分割頁面
 
     # **頁面導航按鈕**
     col1, col2 = st.columns([1, 5])
@@ -185,12 +187,13 @@ def main():
             if st.button("Previous"):
                 st.session_state.page -= 1
     with col2:
-        if st.session_state.page < 4:
-            if st.button("Next", disabled=len(st.session_state.scale_coords) < 2):
+        if st.session_state.page < 3:
+            if st.button("Next"):
                 st.session_state.page += 1
 
 if __name__ == "__main__":
     main()
+
 
 
 # In[ ]:
