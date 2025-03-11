@@ -5,19 +5,15 @@
 
 
 import streamlit as st
-import cv2
 import numpy as np
 import pandas as pd
-import networkx as nx
-from PIL import Image
-import matplotlib.pyplot as plt
-import re
-import streamlit.components.v1 as components
-import io
-import math
-import time
+import cv2
 import plotly.express as px
 import plotly.graph_objects as go
+from PIL import Image
+from skimage.filters import threshold_multiotsu
+from skimage.measure import regionprops, label
+import streamlit.components.v1 as components
 
 
 # In[1]:
@@ -195,4 +191,69 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# In[ ]:
+
+
+# **Otsu 門檻分割頁面**
+def otsu_segmentation():
+    inject_ga()
+    st.title("Multi-Otsu Thresholding & SEM Analysis")
+    
+    st.sidebar.header("Otsu Segmentation Settings")
+    num_classes = st.sidebar.slider("選擇分割區間數", min_value=2, max_value=5, value=3)
+
+    # **確認是否已經有圖片和比例尺數據**
+    if st.session_state.image is None or st.session_state.pixel_to_um is None:
+        st.error("⚠️ 請先上傳圖片並設定比例尺！")
+        return
+    
+    image_np = np.array(st.session_state.image.convert("L"))
+    pixel_to_um = st.session_state.pixel_to_um
+
+    # **應用 Multi-Otsu 門檻分割**
+    thresholds = threshold_multiotsu(image_np, classes=num_classes)
+    segmented_image = np.digitize(image_np, bins=thresholds)
+
+    # **顯示結果**
+    fig = px.imshow(segmented_image, color_continuous_scale='gray')
+    fig.update_layout(coloraxis_showscale=False, title="Otsu 分割結果")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.success(f"門檻值: {thresholds}")
+
+    # **計算面積分析**
+    pixel_areas = [(segmented_image == i).sum() for i in range(num_classes)]
+    total_area = sum(pixel_areas)
+    real_physical_sizes = [area * (pixel_to_um ** 2) for area in pixel_areas]
+    area_percentages = [(size / total_area) * 100 for size in real_physical_sizes]
+
+    df_analysis = pd.DataFrame({
+        "Layer": [f"Layer {i}" for i in range(num_classes)],
+        "Pixel Area": pixel_areas,
+        "Physical Area (µm²)": real_physical_sizes,
+        "Area Percentage (%)": area_percentages
+    })
+
+    st.dataframe(df_analysis)
+
+    # **可視化**
+    fig_bar = px.bar(df_analysis, x="Layer", y="Physical Area (µm²)", title="Physical Area of Each Layer")
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+    fig_pie = px.pie(df_analysis, names="Layer", values="Area Percentage (%)", title="Area Distribution Across Layers")
+    st.plotly_chart(fig_pie, use_container_width=True)
+
+    # **計算額外指標**
+    porosity_ratio = (pixel_areas[0] / total_area) * 100
+    catalyst_areas = pixel_areas[2] + pixel_areas[3]
+    catalyst_percentage = (catalyst_areas / total_area) * 100
+    agglomeration_ratio = (pixel_areas[3] / catalyst_areas) * 100
+    oxidation_ratio = (pixel_areas[4] / total_area) * 100
+
+    st.write(f"📌 孔隙率: {porosity_ratio:.2f}%")
+    st.write(f"📌 催化劑覆蓋率: {catalyst_percentage:.2f}%")
+    st.write(f"📌 團聚比: {agglomeration_ratio:.2f}%")
+    st.write(f"📌 氧化/雜質覆蓋率: {oxidation_ratio:.2f}%")
 
