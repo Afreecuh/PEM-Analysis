@@ -1,9 +1,7 @@
 streamlit
+scikit-image
 numpy
 pandas
-opencv-python-headless
-pillow
-pytesseract
-matplotlib
-networkx
 plotly
+pillow
+opencv-python
