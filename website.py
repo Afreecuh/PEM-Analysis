@@ -182,7 +182,8 @@ def otsu_segmentation():
 import cv2
 import numpy as np
 import streamlit as st
-import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
 from PIL import Image
 from skimage.filters import threshold_multiotsu
 
@@ -262,22 +263,25 @@ def analyze_particles_page():
     # **執行分析**
     circularities, shape_labels = analyze_particles(image)
 
-    # **繪製 Circularity 直方圖**
+    # **繪製可互動 Circularity 直方圖**
     st.subheader("📊 Circularity Distribution")
-    fig_circularity, ax_circularity = plt.subplots(figsize=(6, 4))
     if circularities:
-        ax_circularity.hist(circularities, bins=10, range=(0.0, 1.0), color='blue', alpha=0.7, edgecolor='black')
-        ax_circularity.set_xlim([0.0, 1.0])  # 設定 X 軸範圍
-        ax_circularity.set_xlabel("Circularity Score")
-        ax_circularity.set_ylabel("Frequency")
-        ax_circularity.set_title("Circularity Distribution")
+        fig_circularity = px.histogram(
+            x=circularities,
+            nbins=10,
+            range_x=[0.0, 1.0],
+            title="Circularity Distribution",
+            labels={"x": "Circularity Score", "y": "Frequency"},
+            opacity=0.7
+        )
+        fig_circularity.update_traces(marker_line_width=1, marker_line_color="black")
+        fig_circularity.update_layout(xaxis=dict(title="Circularity Score", dtick=0.1), yaxis_title="Frequency")
+        st.plotly_chart(fig_circularity, use_container_width=True)
     else:
-        ax_circularity.text(0.5, 0.5, "No Particles Detected", fontsize=12, ha='center', va='center')
-    st.pyplot(fig_circularity)
+        st.warning("No Particles Detected")
 
-    # **繪製 Shape Analysis 直方圖**
+    # **繪製可互動 Shape Analysis 直方圖**
     st.subheader("📊 Shape Analysis")
-    fig_shape, ax_shape = plt.subplots(figsize=(6, 4))
     if shape_labels:
         # 確保所有 5 種形狀類別都顯示
         shape_counts = {shape: 0 for shape in SHAPE_CATEGORIES}
@@ -285,13 +289,22 @@ def analyze_particles_page():
         for shape, count in zip(unique_shapes, counts):
             shape_counts[shape] = count
         
-        ax_shape.bar(shape_counts.keys(), shape_counts.values(), color='green', alpha=0.7, edgecolor='black')
-        ax_shape.set_xlabel("Shape")
-        ax_shape.set_ylabel("Count")
-        ax_shape.set_title("Shape Analysis")
+        fig_shape = go.Figure()
+        fig_shape.add_trace(go.Bar(
+            x=list(shape_counts.keys()),
+            y=list(shape_counts.values()),
+            marker=dict(color="green"),
+            text=list(shape_counts.values()),
+            textposition="outside"
+        ))
+        fig_shape.update_layout(
+            title="Shape Analysis",
+            xaxis=dict(title="Shape"),
+            yaxis=dict(title="Count")
+        )
+        st.plotly_chart(fig_shape, use_container_width=True)
     else:
-        ax_shape.text(0.5, 0.5, "No Shapes Detected", fontsize=12, ha='center', va='center')
-    st.pyplot(fig_shape)
+        st.warning("No Shapes Detected")
 
 
 # In[3]:
