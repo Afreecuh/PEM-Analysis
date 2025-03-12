@@ -186,22 +186,37 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from skimage.filters import threshold_multiotsu
 
-# **計算 Circularity**
-def calculate_circularity(contour):
+# **計算 Circularity, Aspect Ratio, Solidity**
+def calculate_shape_features(contour):
     area = cv2.contourArea(contour)
     perimeter = cv2.arcLength(contour, True)
-    return (4 * np.pi * area) / (perimeter ** 2) if perimeter > 0 else 0
+    x, y, w, h = cv2.boundingRect(contour)
+    
+    # **計算圓度 Circularity**
+    circularity = (4 * np.pi * area) / (perimeter ** 2) if perimeter > 0 else 0
+    
+    # **計算長寬比 Aspect Ratio**
+    aspect_ratio = w / h if h > 0 else 0
+    
+    # **計算 Solidity**
+    hull = cv2.convexHull(contour)
+    hull_area = cv2.contourArea(hull)
+    solidity = area / hull_area if hull_area > 0 else 0
 
-# **分類顆粒形狀**
-def classify_shape(circularity):
-    if circularity > 0.8:
+    return circularity, aspect_ratio, solidity, area
+
+# **分類顆粒形狀（完整保留原始分類邏輯）**
+def classify_shape(circularity, aspect_ratio, solidity):
+    if circularity > 0.8 and 0.9 < aspect_ratio < 1.1:
         return "Circle"
-    elif 0.6 < circularity <= 0.8:
+    elif aspect_ratio > 1.5:
         return "Ellipse"
-    elif 0.3 < circularity <= 0.6:
+    elif 0.95 <= aspect_ratio <= 1.05 and solidity > 0.95:
+        return "Square"
+    elif solidity < 0.9:
         return "Irregular"
     else:
-        return "Undefined"
+        return "Polygon"  # 原始程式包含 Polygon，因此保留
 
 # **分析顆粒**
 def analyze_particles(image):
@@ -222,17 +237,17 @@ def analyze_particles(image):
     for contour in contours:
         area = cv2.contourArea(contour)
         if area > 50:  # 過濾過小顆粒
-            circularity = calculate_circularity(contour)
+            circularity, aspect_ratio, solidity, _ = calculate_shape_features(contour)
             circularities.append(circularity)
-            shape_labels.append(classify_shape(circularity))
+            shape_labels.append(classify_shape(circularity, aspect_ratio, solidity))
 
     return circularities, shape_labels
 
 # **Streamlit 頁面**
 def analyze_particles_page():
     inject_ga()
-    st.title("🔬 SEM 顆粒形狀分析")
-    st.write("顯示 Circularity Distribution 及 Shape Distribution。")
+    st.title("🔬 SEM Shape Analysis")
+    st.write("顯示 Circularity Distribution 及 Shape Analysis。")
 
     # **確保第一頁已上傳圖片**
     if st.session_state.image is None:
@@ -256,15 +271,15 @@ def analyze_particles_page():
         ax_circularity.text(0.5, 0.5, "No Particles Detected", fontsize=12, ha='center', va='center')
     st.pyplot(fig_circularity)
 
-    # **繪製 Shape Distribution 直方圖**
-    st.subheader("📊 Shape Distribution")
+    # **繪製 Shape Analysis 直方圖**
+    st.subheader("📊 Shape Analysis")
     fig_shape, ax_shape = plt.subplots(figsize=(6, 4))
     if shape_labels:
         unique_shapes, counts = np.unique(shape_labels, return_counts=True)
         ax_shape.bar(unique_shapes, counts, color='green', alpha=0.7, edgecolor='black')
         ax_shape.set_xlabel("Shape")
         ax_shape.set_ylabel("Count")
-        ax_shape.set_title("Shape Distribution")
+        ax_shape.set_title("Shape Analysis")
     else:
         ax_shape.text(0.5, 0.5, "No Shapes Detected", fontsize=12, ha='center', va='center')
     st.pyplot(fig_shape)
