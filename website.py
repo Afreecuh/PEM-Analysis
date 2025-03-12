@@ -176,6 +176,147 @@ def otsu_segmentation():
     st.write(f"📌 氧化/雜質覆蓋率: {oxidation_ratio:.2f}%")
 
 
+# In[ ]:
+
+
+import cv2
+import numpy as np
+import streamlit as st
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from skimage.filters import threshold_multiotsu
+from PIL import Image
+
+# **統一 Multi-Otsu 分割區間數為 5**
+NUM_CLASSES = 5  
+
+# **產生標準圓形模板**
+def generate_circular_template(size=50):
+    template = np.zeros((size, size), dtype=np.uint8)
+    cv2.circle(template, (size//2, size//2), size//3, 255, -1)
+    return template
+
+CIRCULAR_TEMPLATE = generate_circular_template()
+
+# **計算形狀特徵**
+def calculate_shape_features(contour):
+    area = cv2.contourArea(contour)
+    perimeter = cv2.arcLength(contour, True)
+    x, y, w, h = cv2.boundingRect(contour)
+    circularity = (4 * np.pi * area) / (perimeter ** 2) if perimeter > 0 else 0
+    aspect_ratio = w / h if h > 0 else 0
+    hull = cv2.convexHull(contour)
+    hull_area = cv2.contourArea(hull)
+    solidity = area / hull_area if hull_area > 0 else 0
+    return circularity, aspect_ratio, solidity, (x, y, w, h)
+
+# **分類顆粒形狀**
+def classify_shape(circularity, aspect_ratio, solidity):
+    if circularity > 0.8 and 0.9 < aspect_ratio < 1.1:
+        return "Circle"
+    elif aspect_ratio > 1.5:
+        return "Ellipse"
+    elif 0.95 <= aspect_ratio <= 1.05 and solidity > 0.95:
+        return "Square"
+    elif solidity < 0.9:
+        return "Irregular"
+    else:
+        return "Polygon"
+
+# **分析顆粒**
+def analyze_particles(image):
+    img_gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
+    img_eq = cv2.equalizeHist(img_gray)
+    img_blur = cv2.medianBlur(img_eq, 5)
+
+    # **Multi-Otsu 分割**
+    thresholds = threshold_multiotsu(img_blur, classes=NUM_CLASSES)
+    segmented = np.digitize(img_blur, bins=thresholds)
+
+    # **產生二值化遮罩**
+    binary = (segmented == 2).astype(np.uint8) * 255
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # **標記影像**
+    segmented_normalized = (segmented - segmented.min()) / (segmented.max() - segmented.min())
+    segmented_colored = cm.jet(segmented_normalized)
+    img_without_contours = (segmented_colored[:, :, :3] * 255).astype(np.uint8)
+    img_with_contours = img_without_contours.copy()
+
+    areas = []
+    shape_results = []
+    ncc_scores = []
+
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area > 50:
+            circularity, aspect_ratio, solidity, (x, y, w, h) = calculate_shape_features(contour)
+            shape = classify_shape(circularity, aspect_ratio, solidity)
+
+            # **計算 NCC 相似度**
+            shape_roi = img_blur[y:y+h, x:x+w]
+            if shape_roi.shape[0] > 10 and shape_roi.shape[1] > 10:
+                shape_resized = cv2.resize(shape_roi, (50, 50))
+                ncc_score = cv2.matchTemplate(shape_resized, CIRCULAR_TEMPLATE, cv2.TM_CCOEFF_NORMED).max()
+                ncc_scores.append(ncc_score)
+
+            # **畫出顆粒輪廓**
+            cv2.drawContours(img_with_contours, [contour], -1, (0, 255, 255), 2)
+            cv2.rectangle(img_with_contours, (x, y), (x + w, y + h), (255, 0, 255), 2)
+            cv2.putText(img_with_contours, shape, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+            shape_results.append(f"Shape: {shape} | NCC: {ncc_score:.2f} | Area: {area:.2f}px² | Circularity: {circularity:.2f}, Aspect Ratio: {aspect_ratio:.2f}, Solidity: {solidity:.2f}")
+            areas.append(area)
+
+    return img_without_contours, img_with_contours, shape_results, areas, img_blur, thresholds, ncc_scores
+
+# **Streamlit 介面**
+st.title("🔬 SEM 顆粒形狀分析（Multi-Otsu & NCC）")
+st.write("上傳 SEM 影像以分析顆粒形狀、圓度（Circularity）、NCC 形狀匹配。")
+
+uploaded_file = st.file_uploader("上傳 SEM 影像（PNG, JPG, BMP）", type=["png", "jpg", "bmp"])
+
+if uploaded_file:
+    image = Image.open(uploaded_file)
+    st.image(image, caption="原始影像", use_column_width=True)
+
+    # **執行分析**
+    img_without_contours, img_with_contours, result_text, areas, img_blur, thresholds, ncc_scores = analyze_particles(image)
+
+    # **顯示處理後影像**
+    st.subheader("📌 分割影像（未標記）")
+    st.image(img_without_contours, caption="分割後影像", use_column_width=True)
+
+    st.subheader("📌 分割影像（已標記顆粒）")
+    st.image(img_with_contours, caption="顆粒分析", use_column_width=True)
+
+    # **顯示形狀分析結果**
+    st.subheader("📊 顆粒形狀分析")
+    if result_text:
+        for item in result_text:
+            st.write(item)
+    else:
+        st.write("未檢測到顯著顆粒")
+
+    # **繪製 Multi-Otsu 門檻直方圖**
+    st.subheader("📉 Multi-Otsu 門檻直方圖")
+    fig_otsu, ax_otsu = plt.subplots(figsize=(6, 3))
+    hist, bins = np.histogram(img_blur.ravel(), bins=256, range=[0, 256])
+    ax_otsu.plot(bins[:-1], hist, color='black')
+    for thresh in thresholds:
+        ax_otsu.axvline(thresh, color='red', linestyle='--', linewidth=1.5)
+    ax_otsu.set_title("Histogram with Multi-Otsu Thresholding")
+    st.pyplot(fig_otsu)
+
+    # **繪製 NCC 分數直方圖**
+    if ncc_scores:
+        st.subheader("📊 NCC 分數分佈")
+        fig_ncc, ax_ncc = plt.subplots(figsize=(6, 3))
+        ax_ncc.hist(ncc_scores, bins=10, color='green', alpha=0.7, edgecolor='black')
+        ax_ncc.set_title("NCC Score Distribution")
+        st.pyplot(fig_ncc)
+
+
 # In[3]:
 
 
@@ -272,7 +413,9 @@ def main():
     if st.session_state.page == 1:
         upload_and_mark_scale()
     elif st.session_state.page == 2:
-        otsu_segmentation()  # 確保執行 Otsu 分割頁面
+        otsu_segmentation()  # Multi-Otsu + 面積分析
+    elif st.session_state.page == 3:
+        analyze_particles_page()  # Multi-Otsu + NCC + 形狀分類分析
 
     # **頁面導航按鈕**
     col1, col2 = st.columns([1, 5])
@@ -281,7 +424,7 @@ def main():
             if st.button("Previous"):
                 st.session_state.page -= 1
     with col2:
-        if st.session_state.page < 3:
+        if st.session_state.page < 4:
             if st.button("Next"):
                 st.session_state.page += 1
 
