@@ -186,6 +186,9 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from skimage.filters import threshold_multiotsu
 
+# **定義所有形狀類別**
+SHAPE_CATEGORIES = ["Circle", "Ellipse", "Square", "Irregular", "Polygon"]
+
 # **計算 Circularity, Aspect Ratio, Solidity**
 def calculate_shape_features(contour):
     area = cv2.contourArea(contour)
@@ -205,7 +208,7 @@ def calculate_shape_features(contour):
 
     return circularity, aspect_ratio, solidity, area
 
-# **分類顆粒形狀（完整保留原始分類邏輯）**
+# **分類顆粒形狀**
 def classify_shape(circularity, aspect_ratio, solidity):
     if circularity > 0.8 and 0.9 < aspect_ratio < 1.1:
         return "Circle"
@@ -216,7 +219,7 @@ def classify_shape(circularity, aspect_ratio, solidity):
     elif solidity < 0.9:
         return "Irregular"
     else:
-        return "Polygon"  # 原始程式包含 Polygon，因此保留
+        return "Polygon"
 
 # **分析顆粒**
 def analyze_particles(image):
@@ -263,7 +266,8 @@ def analyze_particles_page():
     st.subheader("📊 Circularity Distribution")
     fig_circularity, ax_circularity = plt.subplots(figsize=(6, 4))
     if circularities:
-        ax_circularity.hist(circularities, bins=10, color='blue', alpha=0.7, edgecolor='black')
+        ax_circularity.hist(circularities, bins=10, range=(0.0, 1.0), color='blue', alpha=0.7, edgecolor='black')
+        ax_circularity.set_xlim([0.0, 1.0])  # 設定 X 軸範圍
         ax_circularity.set_xlabel("Circularity Score")
         ax_circularity.set_ylabel("Frequency")
         ax_circularity.set_title("Circularity Distribution")
@@ -275,8 +279,13 @@ def analyze_particles_page():
     st.subheader("📊 Shape Analysis")
     fig_shape, ax_shape = plt.subplots(figsize=(6, 4))
     if shape_labels:
+        # 確保所有 5 種形狀類別都顯示
+        shape_counts = {shape: 0 for shape in SHAPE_CATEGORIES}
         unique_shapes, counts = np.unique(shape_labels, return_counts=True)
-        ax_shape.bar(unique_shapes, counts, color='green', alpha=0.7, edgecolor='black')
+        for shape, count in zip(unique_shapes, counts):
+            shape_counts[shape] = count
+        
+        ax_shape.bar(shape_counts.keys(), shape_counts.values(), color='green', alpha=0.7, edgecolor='black')
         ax_shape.set_xlabel("Shape")
         ax_shape.set_ylabel("Count")
         ax_shape.set_title("Shape Analysis")
