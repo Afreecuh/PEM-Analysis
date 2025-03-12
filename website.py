@@ -271,13 +271,17 @@ def analyze_particles(image):
     return img_without_contours, img_with_contours, shape_results, areas, img_blur, thresholds, ncc_scores
 
 # **Streamlit 介面**
-st.title("🔬 SEM 顆粒形狀分析（Multi-Otsu & NCC）")
-st.write("上傳 SEM 影像以分析顆粒形狀、圓度（Circularity）、NCC 形狀匹配。")
+def analyze_particles_page():
+    inject_ga()
+    st.title("🔬 SEM 顆粒形狀分析（Multi-Otsu & NCC）")
+    st.write("分析 **第一頁上傳的圖片**，計算顆粒形狀、圓度（Circularity）、NCC 形狀匹配。")
 
-uploaded_file = st.file_uploader("上傳 SEM 影像（PNG, JPG, BMP）", type=["png", "jpg", "bmp"])
+    # **確保第一頁已上傳圖片**
+    if st.session_state.image is None:
+        st.error("⚠️ 請先上傳圖片並設定比例尺！")
+        return
 
-if uploaded_file:
-    image = Image.open(uploaded_file)
+    image = st.session_state.image  # **使用第一頁的圖片**
     st.image(image, caption="原始影像", use_column_width=True)
 
     # **執行分析**
