@@ -110,6 +110,10 @@ def otsu_segmentation():
     if "class_masks" not in st.session_state:
         st.session_state.class_masks = [(segmented_image == i).astype(np.uint8) * 255 for i in range(num_classes)]
 
+    # **確保 Layer 選擇不會影響頁面狀態**
+    if "selected_layer_index" not in st.session_state:
+        st.session_state.selected_layer_index = 0  # **預設選擇第一個 Layer**
+
     # **產生分類遮罩並計算統計數據**
     labeled_masks = [label(mask) for mask in st.session_state.class_masks]  # 標記區域
     class_properties = [regionprops(labeled_mask) for labeled_mask in labeled_masks]
@@ -154,15 +158,17 @@ def otsu_segmentation():
     
     # **顯示 Layer Visualization**
     st.write("### Layer Visualization")
-    selected_layer = st.selectbox("選擇要顯示的 Layer", layer_labels, key="layer_select")
+    selected_layer = st.selectbox("選擇要顯示的 Layer", layer_labels, index=st.session_state.selected_layer_index)
 
-    if selected_layer:
-        selected_index = layer_labels.index(selected_layer)
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.imshow(st.session_state.class_masks[selected_index], cmap="gray")
-        ax.set_title(f"{selected_layer} (Layer {selected_index})")
-        ax.axis("off")
-        st.pyplot(fig)
+    # **更新 session_state，而不是觸發整個頁面刷新**
+    st.session_state.selected_layer_index = layer_labels.index(selected_layer)
+
+    # **顯示選定 Layer 的遮罩**
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.imshow(st.session_state.class_masks[st.session_state.selected_layer_index], cmap="gray")
+    ax.set_title(f"{selected_layer} (Layer {st.session_state.selected_layer_index})")
+    ax.axis("off")
+    st.pyplot(fig)
     
     # **可視化 - 圖表**
     fig_pie = px.pie(df_analysis, names="Layer", values="Area Percentage (%)", title="Area Distribution Across Layers")
