@@ -307,6 +307,47 @@ def analyze_particles_page():
         st.warning("No Shapes Detected")
 
 
+# In[ ]:
+
+
+def show_user_guide():
+    """在頁面內部提供可收合的 User Guide"""
+    guide_content = {
+        1: """
+        ### **Page 1: Upload Image & Scale Annotation**
+        - Upload an image (PNG, JPG, BMP).
+        - Click two points to **mark the scale**.
+        - Enter the actual scale length (µm).
+        - The system calculates **µm/px** automatically.
+        - Click **Next** to proceed.
+        """,
+        2: """
+        ### **Page 2: Multi-Otsu Segmentation**
+        - The system performs **Multi-Otsu thresholding** to segment different material layers.
+        - You will see **area analysis** results including:
+          - Physical area (µm²)
+          - Percentage of each layer
+          - Porosity & Catalyst coverage
+        - Click **Next** to proceed to shape analysis.
+        """,
+        3: """
+        ### **Page 3: Shape & Circularity Analysis**
+        - The system analyzes the **shape and circularity** of detected particles.
+        - **Circularity Distribution** chart shows the spread of circularity scores.
+        - **Shape Analysis** chart categorizes particles into:
+          - Circle
+          - Ellipse
+          - Square
+          - Irregular
+          - Polygon
+        - Hover over the charts to see **detailed values**.
+        """
+    }
+
+    with st.expander("📖 **User Guide**", expanded=False):
+        st.markdown(guide_content.get(st.session_state.page, "No guide available for this page."))
+
+
 # In[3]:
 
 
@@ -352,16 +393,6 @@ def upload_and_mark_scale():
     st.image("cover_image.jpg", use_container_width=True)  # **確保封面圖片仍然顯示**
     st.title("PEM Analysis")  # **保留唯一標題**
 
-    # **側邊欄使用者指南**
-    st.sidebar.header("User Guide")
-    guide_text = (
-        "1. Upload an image.\n"
-        "2. Click two points on the image to mark the scale.\n"
-        "3. Enter the actual scale length (µm).\n"
-        "4. The system calculates **µm/px** automatically.\n"
-        "5. Navigate between pages using the buttons below."
-    )
-    st.sidebar.info(guide_text)
 
     # **單一上傳圖片區塊**
     uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"], key="image_upload")
@@ -397,15 +428,19 @@ def upload_and_mark_scale():
         handle_scale_annotation()
 
 
-
-# **主函式**
 def main():
+    if "page" not in st.session_state:
+        st.session_state.page = 1  # 預設第一頁
+
+    # **顯示 User Guide**
+    show_user_guide()  
+
     if st.session_state.page == 1:
         upload_and_mark_scale()
     elif st.session_state.page == 2:
-        otsu_segmentation()  # Multi-Otsu + 面積分析
+        otsu_segmentation()
     elif st.session_state.page == 3:
-        analyze_particles_page()  # Multi-Otsu + NCC + 形狀分類分析
+        analyze_particles_page()
 
     # **頁面導航按鈕**
     col1, col2 = st.columns([1, 5])
@@ -414,11 +449,10 @@ def main():
             if st.button("Previous"):
                 st.session_state.page -= 1
     with col2:
-        if st.session_state.page < 4:
+        if st.session_state.page < 3:
             if st.button("Next"):
                 st.session_state.page += 1
 
 if __name__ == "__main__":
     main()
-
 
