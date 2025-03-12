@@ -106,7 +106,7 @@ def otsu_segmentation():
     thresholds = threshold_multiotsu(image_np, classes=num_classes)
     segmented_image = np.digitize(image_np, bins=thresholds)
 
-    # **確保 class_masks 只計算一次，避免每次選擇 Layer 時重新運算**
+    # **確保 class_masks 只計算一次**
     if "class_masks" not in st.session_state:
         st.session_state.class_masks = [(segmented_image == i).astype(np.uint8) * 255 for i in range(num_classes)]
 
@@ -158,10 +158,18 @@ def otsu_segmentation():
     
     # **顯示 Layer Visualization**
     st.write("### Layer Visualization")
-    selected_layer = st.selectbox("選擇要顯示的 Layer", layer_labels, index=st.session_state.selected_layer_index)
 
-    # **更新 session_state，而不是觸發整個頁面刷新**
-    st.session_state.selected_layer_index = layer_labels.index(selected_layer)
+    # **使用 session_state 綁定 selectbox**
+    selected_layer = st.selectbox(
+        "選擇要顯示的 Layer", 
+        layer_labels, 
+        index=st.session_state.get("selected_layer_index", 0),
+        key="layer_selection"
+    )
+
+    # **更新 session_state，確保不影響頁面跳轉**
+    if selected_layer:
+        st.session_state.selected_layer_index = layer_labels.index(selected_layer)
 
     # **顯示選定 Layer 的遮罩**
     fig, ax = plt.subplots(figsize=(6, 6))
