@@ -312,10 +312,8 @@ def analyze_particles_page():
 # In[ ]:
 
 
-import streamlit as st
-
 def show_user_guide():
-    """使用自訂 CSS 和 JavaScript 讓 User Guide 以側邊欄滑入滑出"""
+    """使用 Streamlit sidebar 顯示 User Guide"""
     guide_content = {
         1: """
         ### **Page 1: Upload Image & Scale Annotation**
@@ -348,63 +346,8 @@ def show_user_guide():
         """
     }
 
-    # **CSS：讓側邊欄滑入滑出**
-    st.markdown(
-        """
-        <style>
-        .sidebar-guide {
-            position: fixed;
-            left: -350px;  /* 初始位置在螢幕外 */
-            top: 0;
-            width: 350px;
-            height: 100%;
-            background-color: #f8f9fa;
-            box-shadow: 2px 0px 10px rgba(0,0,0,0.1);
-            padding: 20px;
-            transition: left 0.5s ease-in-out;
-            z-index: 1000;
-        }
-        .sidebar-guide.open {
-            left: 0;
-        }
-        .guide-toggle-btn {
-            position: fixed;
-            top: 20px;
-            left: 10px;
-            background-color: #007bff;
-            color: white;
-            padding: 10px 15px;
-            border-radius: 5px;
-            cursor: pointer;
-            z-index: 1100;
-        }
-        .close-btn {
-            background-color: red;
-            color: white;
-            padding: 5px 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            float: right;
-        }
-        </style>
-        <script>
-        function toggleGuide() {
-            var guide = document.getElementById("user-guide");
-            if (guide.classList.contains("open")) {
-                guide.classList.remove("open");
-            } else {
-                guide.classList.add("open");
-            }
-        }
-        </script>
-        <div class="guide-toggle-btn" onclick="toggleGuide()">📖 User Guide</div>
-        <div id="user-guide" class="sidebar-guide">
-            <button class="close-btn" onclick="toggleGuide()">✖</button>
-            """ + guide_content.get(st.session_state.page, "No guide available for this page.") + """
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    st.sidebar.title("📖 User Guide")
+    st.sidebar.markdown(guide_content.get(st.session_state.page, "No guide available for this page."))
 
 
 # In[3]:
