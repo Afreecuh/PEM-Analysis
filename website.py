@@ -231,6 +231,9 @@ def analyze_particles(image):
     circularities = []
     shape_labels = []
 
+    # **生成輪廓標記影像**
+    img_with_contours = cv2.cvtColor(img_gray, cv2.COLOR_GRAY2BGR)
+
     for contour in contours:
         area = cv2.contourArea(contour)
         if area > 50:  # **過濾掉小面積顆粒**
@@ -239,7 +242,10 @@ def analyze_particles(image):
             circularities.append(circularity)
             shape_labels.append(shape)
 
-    return circularities, shape_labels
+            # **在影像上標註顆粒輪廓**
+            cv2.drawContours(img_with_contours, [contour], -1, (0, 255, 255), 2)
+
+    return circularities, shape_labels, binary, img_with_contours
 
 # **Streamlit 介面**
 def analyze_particles_page():
@@ -252,7 +258,7 @@ def analyze_particles_page():
     image = st.session_state.image
 
     # **執行分析**
-    circularities, shape_labels = analyze_particles(image)
+    circularities, shape_labels, binary_image, img_with_contours = analyze_particles(image)
 
     # **繪製 Circularity Distribution 直方圖**
     st.subheader("📊 Circularity Distribution")
@@ -265,6 +271,11 @@ def analyze_particles_page():
         )
         fig_circularity.update_traces(marker_color='blue')
         st.plotly_chart(fig_circularity, use_container_width=True)
+
+        # **用 expander 顯示 Binary Segmentation**
+        with st.expander("🔍 Show Processed Binary Image"):
+            st.image(binary_image, caption="Binary Segmentation (Used for Circularity Calculation)", use_column_width=True, clamp=True)
+
     else:
         st.warning("⚠️ 沒有偵測到顆粒")
 
@@ -279,9 +290,13 @@ def analyze_particles_page():
         )
         fig_shape.update_traces(marker_color='green')
         st.plotly_chart(fig_shape, use_container_width=True)
+
+        # **用 expander 顯示 Segmented Image with Contours**
+        with st.expander("🔍 Show Shape Contour Image"):
+            st.image(img_with_contours, caption="Segmented Image with Contours", use_column_width=True)
+
     else:
         st.warning("⚠️ 沒有偵測到顆粒")
-
 
 
 # User Guide
