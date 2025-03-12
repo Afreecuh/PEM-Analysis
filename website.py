@@ -106,9 +106,12 @@ def otsu_segmentation():
     thresholds = threshold_multiotsu(image_np, classes=num_classes)
     segmented_image = np.digitize(image_np, bins=thresholds)
 
+    # **確保 class_masks 只計算一次，避免每次選擇 Layer 時重新運算**
+    if "class_masks" not in st.session_state:
+        st.session_state.class_masks = [(segmented_image == i).astype(np.uint8) * 255 for i in range(num_classes)]
+
     # **產生分類遮罩並計算統計數據**
-    class_masks = [(segmented_image == i).astype(np.uint8) * 255 for i in range(num_classes)]
-    labeled_masks = [label(mask) for mask in class_masks]  # 標記區域
+    labeled_masks = [label(mask) for mask in st.session_state.class_masks]  # 標記區域
     class_properties = [regionprops(labeled_mask) for labeled_mask in labeled_masks]
     
     # **計算每個類別的區域統計資訊**
@@ -149,17 +152,19 @@ def otsu_segmentation():
     fig_bar.update_traces(customdata=layer_labels, hoverinfo="x+y")
     st.plotly_chart(fig_bar, use_container_width=True)
     
-    # **顯示對應的遮罩圖片**
+    # **顯示 Layer Visualization**
     st.write("### Layer Visualization")
     selected_layer = st.selectbox("選擇要顯示的 Layer", layer_labels, key="layer_select")
+
     if selected_layer:
         selected_index = layer_labels.index(selected_layer)
         fig, ax = plt.subplots(figsize=(6, 6))
-        ax.imshow(class_masks[selected_index], cmap="gray")
+        ax.imshow(st.session_state.class_masks[selected_index], cmap="gray")
         ax.set_title(f"{selected_layer} (Layer {selected_index})")
         ax.axis("off")
         st.pyplot(fig)
     
+    # **可視化 - 圖表**
     fig_pie = px.pie(df_analysis, names="Layer", values="Area Percentage (%)", title="Area Distribution Across Layers")
     st.plotly_chart(fig_pie, use_container_width=True)
 
