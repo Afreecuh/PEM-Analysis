@@ -183,31 +183,23 @@ import cv2
 import numpy as np
 import streamlit as st
 import plotly.express as px
-import plotly.graph_objects as go
-from PIL import Image
 from skimage.filters import threshold_multiotsu
+from PIL import Image
 
-# **定義所有形狀類別**
-SHAPE_CATEGORIES = ["Circle", "Ellipse", "Square", "Irregular", "Polygon"]
+# **統一 Multi-Otsu 分割區間數為 4**
+NUM_CLASSES = 4  
 
-# **計算 Circularity, Aspect Ratio, Solidity**
+# **計算形狀特徵**
 def calculate_shape_features(contour):
     area = cv2.contourArea(contour)
     perimeter = cv2.arcLength(contour, True)
     x, y, w, h = cv2.boundingRect(contour)
-    
-    # **計算圓度 Circularity**
     circularity = (4 * np.pi * area) / (perimeter ** 2) if perimeter > 0 else 0
-    
-    # **計算長寬比 Aspect Ratio**
     aspect_ratio = w / h if h > 0 else 0
-    
-    # **計算 Solidity**
     hull = cv2.convexHull(contour)
     hull_area = cv2.contourArea(hull)
     solidity = area / hull_area if hull_area > 0 else 0
-
-    return circularity, aspect_ratio, solidity, area
+    return circularity, aspect_ratio, solidity
 
 # **分類顆粒形狀**
 def classify_shape(circularity, aspect_ratio, solidity):
@@ -225,13 +217,14 @@ def classify_shape(circularity, aspect_ratio, solidity):
 # **分析顆粒**
 def analyze_particles(image):
     img_gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
-    img_blur = cv2.medianBlur(img_gray, 5)
+    img_eq = cv2.equalizeHist(img_gray)
+    img_blur = cv2.GaussianBlur(img_eq, (5, 5), 0)  # **還原為 GaussianBlur**
 
     # **Multi-Otsu 分割**
-    thresholds = threshold_multiotsu(img_blur, classes=5)
+    thresholds = threshold_multiotsu(img_blur, classes=NUM_CLASSES)
     segmented = np.digitize(img_blur, bins=thresholds)
 
-    # **二值化處理**
+    # **產生二值化遮罩**
     binary = (segmented == 2).astype(np.uint8) * 255
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -240,71 +233,55 @@ def analyze_particles(image):
 
     for contour in contours:
         area = cv2.contourArea(contour)
-        if area > 50:  # 過濾過小顆粒
-            circularity, aspect_ratio, solidity, _ = calculate_shape_features(contour)
+        if area > 50:  # **過濾掉小面積顆粒**
+            circularity, aspect_ratio, solidity = calculate_shape_features(contour)
+            shape = classify_shape(circularity, aspect_ratio, solidity)
             circularities.append(circularity)
-            shape_labels.append(classify_shape(circularity, aspect_ratio, solidity))
+            shape_labels.append(shape)
 
     return circularities, shape_labels
 
-# **Streamlit 頁面**
+# **Streamlit 介面**
 def analyze_particles_page():
-    inject_ga()
-    st.title("🔬 SEM Shape Analysis")
-    st.write("顯示 Circularity Distribution 及 Shape Analysis。")
+    st.title("🔬 SEM 顆粒形狀分析")
 
-    # **確保第一頁已上傳圖片**
     if st.session_state.image is None:
-        st.error("⚠️ 請先上傳圖片！")
+        st.error("⚠️ 請先上傳圖片並設定比例尺！")
         return
 
-    image = st.session_state.image  # **使用第一頁的圖片**
+    image = st.session_state.image
 
     # **執行分析**
     circularities, shape_labels = analyze_particles(image)
 
-    # **繪製可互動 Circularity 直方圖**
+    # **繪製 Circularity Distribution 直方圖**
     st.subheader("📊 Circularity Distribution")
     if circularities:
         fig_circularity = px.histogram(
-            x=circularities,
-            nbins=10,
-            range_x=[0.0, 1.0],
+            x=circularities, nbins=20, range_x=[0, 1], 
+            labels={'x': 'Circularity Score', 'y': 'Frequency'},
             title="Circularity Distribution",
-            labels={"x": "Circularity Score", "y": "Frequency"},
             opacity=0.7
         )
-        fig_circularity.update_traces(marker_line_width=1, marker_line_color="black")
-        fig_circularity.update_layout(xaxis=dict(title="Circularity Score", dtick=0.1), yaxis_title="Frequency")
+        fig_circularity.update_traces(marker_color='blue')
         st.plotly_chart(fig_circularity, use_container_width=True)
     else:
-        st.warning("No Particles Detected")
+        st.warning("⚠️ 沒有偵測到顆粒")
 
-    # **繪製可互動 Shape Analysis 直方圖**
+    # **繪製 Shape Analysis 直方圖**
     st.subheader("📊 Shape Analysis")
     if shape_labels:
-        # 確保所有 5 種形狀類別都顯示
-        shape_counts = {shape: 0 for shape in SHAPE_CATEGORIES}
-        unique_shapes, counts = np.unique(shape_labels, return_counts=True)
-        for shape, count in zip(unique_shapes, counts):
-            shape_counts[shape] = count
-        
-        fig_shape = go.Figure()
-        fig_shape.add_trace(go.Bar(
-            x=list(shape_counts.keys()),
-            y=list(shape_counts.values()),
-            marker=dict(color="green"),
-            text=list(shape_counts.values()),
-            textposition="outside"
-        ))
-        fig_shape.update_layout(
+        fig_shape = px.histogram(
+            x=shape_labels, 
+            labels={'x': 'Shape', 'y': 'Count'},
             title="Shape Analysis",
-            xaxis=dict(title="Shape"),
-            yaxis=dict(title="Count")
+            opacity=0.7
         )
+        fig_shape.update_traces(marker_color='green')
         st.plotly_chart(fig_shape, use_container_width=True)
     else:
-        st.warning("No Shapes Detected")
+        st.warning("⚠️ 沒有偵測到顆粒")
+
 
 
 # User Guide
