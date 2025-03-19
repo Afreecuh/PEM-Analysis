@@ -148,6 +148,9 @@ def otsu_segmentation():
         "Average Area per Region (px)": avg_area_per_region
     })
 
+    # **確保分析結果存入 session_state**
+    st.session_state.analysis_df = df_analysis
+
     # **顯示表格**
     st.dataframe(df_analysis)
 
@@ -279,6 +282,10 @@ def analyze_particles_page():
     # **執行分析**
     circularities, shape_labels, binary_image, img_with_contours = analyze_particles(image)
 
+    # **確保形狀分析數據存入 session_state**
+    shape_counts = {shape: shape_labels.count(shape) for shape in set(shape_labels)}
+    st.session_state.shape_analysis = shape_counts
+
     # **繪製 Circularity Distribution 直方圖**
     st.subheader("📊 Circularity Distribution")
     if circularities:
@@ -401,15 +408,21 @@ def generate_pdf():
     pdf.setFont("Helvetica-Bold", 14)
     pdf.drawString(50, 420, "Multi-Otsu Segmentation Analysis")
     pdf.setFont("Helvetica", 12)
-    for i, row in st.session_state.analysis_df.iterrows():
-        pdf.drawString(50, 400 - i * 20, f"{row['Layer']}: {row['Physical Area (µm²)']:.2f} µm² ({row['Area Percentage (%)']:.2f}%)")
+    if "analysis_df" in st.session_state:
+        for i, row in st.session_state.analysis_df.iterrows():
+            pdf.drawString(50, 400 - i * 20, f"{row['Layer']}: {row['Physical Area (µm²)']:.2f} µm² ({row['Area Percentage (%)']:.2f}%)")
+    else:
+        pdf.drawString(50, 400, "⚠️ No segmentation data available.")
     
     # **顆粒形狀分析**
     pdf.setFont("Helvetica-Bold", 14)
     pdf.drawString(50, 250, "Particle Shape Analysis")
     pdf.setFont("Helvetica", 12)
-    for shape, count in st.session_state.shape_analysis.items():
-        pdf.drawString(50, 230 - list(st.session_state.shape_analysis.keys()).index(shape) * 20, f"{shape}: {count} particles")
+    if "shape_analysis" in st.session_state:
+        for shape, count in st.session_state.shape_analysis.items():
+            pdf.drawString(50, 230 - list(st.session_state.shape_analysis.keys()).index(shape) * 20, f"{shape}: {count} particles")
+    else:
+        pdf.drawString(50, 230, "⚠️ No shape analysis data available.")
     
     # **存儲 PDF 並返回**
     pdf.save()
