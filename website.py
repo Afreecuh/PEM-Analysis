@@ -107,7 +107,8 @@ def otsu_segmentation():
     segmented_image = np.digitize(image_np, bins=thresholds)
 
     # **確保 class_masks 只計算一次**
-    st.session_state.class_masks = [(segmented_image == i).astype(np.uint8) * 255 for i in range(num_classes)]
+    if "class_masks" not in st.session_state:
+        st.session_state.class_masks = [(segmented_image == i).astype(np.uint8) * 255 for i in range(num_classes)]
 
     # **確保 Layer 選擇不會影響頁面狀態**
     if "selected_layer_index" not in st.session_state:
@@ -147,9 +148,6 @@ def otsu_segmentation():
         "Average Area per Region (px)": avg_area_per_region
     })
 
-    # **確保分析結果存入 session_state**
-    st.session_state.analysis_df = df_analysis
-
     # **顯示表格**
     st.dataframe(df_analysis)
 
@@ -170,7 +168,8 @@ def otsu_segmentation():
     )
 
     # **更新 session_state，確保不影響頁面跳轉**
-    st.session_state.selected_layer_index = layer_labels.index(selected_layer)
+    if selected_layer:
+        st.session_state.selected_layer_index = layer_labels.index(selected_layer)
 
     # **顯示選定 Layer 的遮罩**
     fig, ax = plt.subplots(figsize=(6, 6))
@@ -190,18 +189,22 @@ def otsu_segmentation():
     agglomeration_ratio = (pixel_areas[3] / catalyst_areas) * 100 if len(pixel_areas) > 3 and catalyst_areas > 0 else 0
     oxidation_ratio = (pixel_areas[4] / total_area) * 100 if len(pixel_areas) > 4 else 0
 
-    # **確保額外數據存入 session_state**
-    st.session_state.extra_metrics = {
-        "Porosity Ratio": porosity_ratio,
-        "Catalyst Coverage": catalyst_percentage,
-        "Agglomeration Ratio": agglomeration_ratio,
-        "Oxidation/Impurity Coverage": oxidation_ratio
-    }
-
     st.write(f"📌 孔隙率: {porosity_ratio:.2f}%")
     st.write(f"📌 催化劑覆蓋率: {catalyst_percentage:.2f}%")
     st.write(f"📌 團聚比: {agglomeration_ratio:.2f}%")
     st.write(f"📌 氧化/雜質覆蓋率: {oxidation_ratio:.2f}%")
+
+    # **存入 session_state**
+    st.session_state.analysis_df = df_analysis
+    st.session_state.extra_metrics = {
+        "Porosity Ratio": (pixel_areas[0] / total_area) * 100 if total_area > 0 else 0,
+        "Catalyst Coverage": (sum(pixel_areas[2:4]) / total_area) * 100 if total_area > 0 else 0,
+        "Agglomeration Ratio": (pixel_areas[3] / sum(pixel_areas[2:4])) * 100 if sum(pixel_areas[2:4]) > 0 else 0,
+        "Oxidation/Impurity Coverage": (pixel_areas[4] / total_area) * 100 if total_area > 0 else 0,
+    }
+
+    st.write("✅ Debug: 存入 session_state.analysis_df")
+    st.write(st.session_state.analysis_df)
 
 
 # In[ ]:
@@ -287,13 +290,6 @@ def analyze_particles_page():
 
     # **執行分析**
     circularities, shape_labels, binary_image, img_with_contours = analyze_particles(image)
-
-    # **確保形狀分析數據存入 session_state**
-    shape_counts = {shape: shape_labels.count(shape) for shape in set(shape_labels)}
-    st.session_state.shape_analysis = shape_counts
-
-    # **確保 Circularity 數據也存入 session_state**
-    st.session_state.circularity_data = circularities
 
     # **繪製 Circularity Distribution 直方圖**
     st.subheader("📊 Circularity Distribution")
@@ -397,65 +393,40 @@ def generate_pdf():
     pdf.drawString(200, 730, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     pdf.line(50, 720, 550, 720)
 
-    # **插入 SEM 圖像**
     if st.session_state.image:
         img_buffer = io.BytesIO()
         st.session_state.image.save(img_buffer, format="PNG")
         img_reader = ImageReader(img_buffer)
         pdf.drawImage(img_reader, 150, 500, width=300, height=200)
 
-    # **比例尺資訊**
     pdf.setFont("Helvetica-Bold", 14)
     pdf.drawString(50, 470, "Scale Information")
     pdf.setFont("Helvetica", 12)
-    if "pixel_to_um" in st.session_state:
-        pdf.drawString(50, 450, f"Pixel to µm Ratio: {st.session_state.pixel_to_um:.4f} µm/px")
-    else:
-        pdf.drawString(50, 450, "⚠️ No scale information available.")
+    pdf.drawString(50, 450, f"Pixel to µm Ratio: {st.session_state.get('pixel_to_um', 'N/A')} µm/px")
 
-    # **Multi-Otsu 分割分析**
     pdf.setFont("Helvetica-Bold", 14)
     pdf.drawString(50, 420, "Multi-Otsu Segmentation Analysis")
     pdf.setFont("Helvetica", 12)
-    if "analysis_df" in st.session_state and not st.session_state.analysis_df.empty:
-        for i, row in st.session_state.analysis_df.iterrows():
-            pdf.drawString(50, 400 - i * 20, f"{row['Layer']}: {row['Physical Area (µm²)']:.2f} µm² ({row['Area Percentage (%)']:.2f}%)")
+    analysis_df = st.session_state.get("analysis_df", None)
+    if analysis_df is not None and not analysis_df.empty:
+        y_offset = 400
+        for i, row in analysis_df.iterrows():
+            pdf.drawString(50, y_offset, f"{row['Layer']}: {row['Physical Area (µm²)']:.2f} µm² ({row['Area Percentage (%)']:.2f}%)")
+            y_offset -= 20
     else:
         pdf.drawString(50, 400, "⚠️ No segmentation data available.")
 
-    # **額外分析指標**
     pdf.setFont("Helvetica-Bold", 14)
     pdf.drawString(50, 250, "Additional Metrics")
     pdf.setFont("Helvetica", 12)
-    if "extra_metrics" in st.session_state:
+    extra_metrics = st.session_state.get("extra_metrics", {})
+    if extra_metrics:
         y_offset = 230
-        for key, value in st.session_state.extra_metrics.items():
+        for key, value in extra_metrics.items():
             pdf.drawString(50, y_offset, f"{key}: {value:.2f}%")
             y_offset -= 20
     else:
         pdf.drawString(50, 230, "⚠️ No additional metrics available.")
-
-    # **顆粒形狀分析**
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, 180, "Particle Shape Analysis")
-    pdf.setFont("Helvetica", 12)
-    if "shape_analysis" in st.session_state and st.session_state.shape_analysis:
-        y_offset = 160
-        for shape, count in st.session_state.shape_analysis.items():
-            pdf.drawString(50, y_offset, f"{shape}: {count} particles")
-            y_offset -= 20
-    else:
-        pdf.drawString(50, 160, "⚠️ No shape analysis data available.")
-
-    # **Circularity 分析**
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, 110, "Circularity Distribution")
-    pdf.setFont("Helvetica", 12)
-    if "circularity_data" in st.session_state and st.session_state.circularity_data:
-        avg_circularity = sum(st.session_state.circularity_data) / len(st.session_state.circularity_data)
-        pdf.drawString(50, 90, f"Average Circularity: {avg_circularity:.2f}")
-    else:
-        pdf.drawString(50, 90, "⚠️ No circularity data available.")
 
     pdf.save()
     buffer.seek(0)
