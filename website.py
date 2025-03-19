@@ -244,39 +244,6 @@ def classify_shape(circularity, aspect_ratio, solidity):
         return "Polygon"
 
 # **分析顆粒**
-def analyze_particles(image):
-    img_gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
-    img_eq = cv2.equalizeHist(img_gray)
-    img_blur = cv2.GaussianBlur(img_eq, (5, 5), 0)  # **還原為 GaussianBlur**
-
-    # **Multi-Otsu 分割**
-    thresholds = threshold_multiotsu(img_blur, classes=NUM_CLASSES)
-    segmented = np.digitize(img_blur, bins=thresholds)
-
-    # **產生二值化遮罩**
-    binary = (segmented == 2).astype(np.uint8) * 255
-    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    circularities = []
-    shape_labels = []
-
-    # **生成輪廓標記影像**
-    img_with_contours = cv2.cvtColor(img_gray, cv2.COLOR_GRAY2BGR)
-
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if area > 50:  # **過濾掉小面積顆粒**
-            circularity, aspect_ratio, solidity = calculate_shape_features(contour)
-            shape = classify_shape(circularity, aspect_ratio, solidity)
-            circularities.append(circularity)
-            shape_labels.append(shape)
-
-            # **在影像上標註顆粒輪廓**
-            cv2.drawContours(img_with_contours, [contour], -1, (0, 255, 255), 2)
-
-    return circularities, shape_labels, binary, img_with_contours
-
-# **Streamlit 介面**
 def analyze_particles_page():
     st.title("🔬 SEM 顆粒形狀分析")
 
@@ -289,7 +256,12 @@ def analyze_particles_page():
     # **執行分析**
     circularities, shape_labels, binary_image, img_with_contours = analyze_particles(image)
 
-    # **繪製 Circularity Distribution 直方圖**
+    # **存入 session_state**
+    shape_counts = {shape: shape_labels.count(shape) for shape in set(shape_labels)}
+    st.session_state.shape_analysis = shape_counts
+    st.session_state.circularity_data = circularities  # ✅ 確保存 Circularity Data
+
+    # **顯示 Circularity Distribution**
     st.subheader("📊 Circularity Distribution")
     if circularities:
         fig_circularity = px.histogram(
@@ -301,14 +273,13 @@ def analyze_particles_page():
         fig_circularity.update_traces(marker_color='blue')
         st.plotly_chart(fig_circularity, use_container_width=True)
 
-        # **用 expander 顯示 Binary Segmentation**
         with st.expander("🔍 Show Processed Binary Image"):
             st.image(binary_image, caption="Binary Segmentation (Used for Circularity Calculation)", use_column_width=True, clamp=True)
 
     else:
         st.warning("⚠️ 沒有偵測到顆粒")
 
-    # **繪製 Shape Analysis 直方圖**
+    # **顯示 Shape Analysis**
     st.subheader("📊 Shape Analysis")
     if shape_labels:
         fig_shape = px.histogram(
@@ -320,10 +291,8 @@ def analyze_particles_page():
         fig_shape.update_traces(marker_color='green')
         st.plotly_chart(fig_shape, use_container_width=True)
 
-        # **用 expander 顯示 Segmented Image with Contours**
         with st.expander("🔍 Show Shape Contour Image"):
             st.image(img_with_contours, caption="Segmented Image with Contours", use_column_width=True)
-
     else:
         st.warning("⚠️ 沒有偵測到顆粒")
 
@@ -407,66 +376,38 @@ def generate_pdf():
         img_buffer = io.BytesIO()
         st.session_state.image.save(img_buffer, format="PNG")
         img_reader = ImageReader(img_buffer)
-        pdf.drawImage(img_reader, 100, 520, width=400, height=200)  # **調整尺寸並置中**
+        pdf.drawImage(img_reader, 100, 520, width=400, height=200)
 
-    # **比例尺資訊**
     pdf.setFont("Helvetica-Bold", 14)
     pdf.drawString(50, 500, "Scale Information")
     pdf.setFont("Helvetica", 12)
     pixel_to_um = st.session_state.get('pixel_to_um', None)
-    if pixel_to_um:
-        pdf.drawString(50, 480, f"Pixel to µm Ratio: {pixel_to_um:.6f} µm/px")  # **控制顯示小數位數**
-    else:
-        pdf.drawString(50, 480, "⚠️ No scale information available.")
-
-    pdf.line(50, 470, 550, 470)  # **分隔線**
-
-    # **Multi-Otsu 分割分析**
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, 450, "Multi-Otsu Segmentation Analysis")
-    pdf.setFont("Helvetica", 12)
-    analysis_df = st.session_state.get("analysis_df", None)
-    y_offset = 430
-    if analysis_df is not None and not analysis_df.empty:
-        for _, row in analysis_df.iterrows():
-            pdf.drawString(50, y_offset, f"{row['Layer']}: {row['Physical Area (µm²)']:.2f} µm² ({row['Area Percentage (%)']:.2f}%)")
-            y_offset -= 20
-    else:
-        pdf.drawString(50, 430, "⚠️ No segmentation data available.")
-
-    pdf.line(50, y_offset - 10, 550, y_offset - 10)  # **分隔線**
-    y_offset -= 30
-
-    # **額外分析指標**
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, y_offset, "Additional Metrics")
-    pdf.setFont("Helvetica", 12)
-    extra_metrics = st.session_state.get("extra_metrics", {})
-    y_offset -= 20
-    if extra_metrics:
-        for key, value in extra_metrics.items():
-            pdf.drawString(50, y_offset, f"{key}: {value:.2f}%")
-            y_offset -= 20
-    else:
-        pdf.drawString(50, y_offset, "⚠️ No additional metrics available.")
-
-    pdf.line(50, y_offset - 10, 550, y_offset - 10)  # **分隔線**
-    y_offset -= 30
+    pdf.drawString(50, 480, f"Pixel to µm Ratio: {pixel_to_um:.6f} µm/px" if pixel_to_um else "⚠️ No scale information available.")
+    pdf.line(50, 470, 550, 470)
 
     # **顆粒形狀分析**
     pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, y_offset, "Particle Shape Analysis")
+    pdf.drawString(50, 350, "Particle Shape Analysis")
     pdf.setFont("Helvetica", 12)
     shape_analysis = st.session_state.get("shape_analysis", {})
-    y_offset -= 20
+    y_offset = 330
+
     if shape_analysis:
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawString(50, y_offset, "Shape Type")
+        pdf.drawString(250, y_offset, "Count")
+        pdf.line(50, y_offset - 5, 550, y_offset - 5)
+        y_offset -= 20
+        
+        pdf.setFont("Helvetica", 12)
         for shape, count in shape_analysis.items():
-            pdf.drawString(50, y_offset, f"{shape}: {count} particles")
+            pdf.drawString(50, y_offset, shape)
+            pdf.drawString(250, y_offset, str(count))
             y_offset -= 20
     else:
         pdf.drawString(50, y_offset, "⚠️ No shape analysis data available.")
 
-    pdf.line(50, y_offset - 10, 550, y_offset - 10)  # **分隔線**
+    pdf.line(50, y_offset - 10, 550, y_offset - 10)
     y_offset -= 30
 
     # **Circularity 分析**
@@ -475,17 +416,17 @@ def generate_pdf():
     pdf.setFont("Helvetica", 12)
     circularity_data = st.session_state.get("circularity_data", [])
     y_offset -= 20
+
     if circularity_data:
         avg_circularity = sum(circularity_data) / len(circularity_data)
         pdf.drawString(50, y_offset, f"Average Circularity: {avg_circularity:.2f}")
+        y_offset -= 20
     else:
         pdf.drawString(50, y_offset, "⚠️ No circularity data available.")
 
     pdf.save()
     buffer.seek(0)
     return buffer
-
-
 
 
 # In[ ]:
