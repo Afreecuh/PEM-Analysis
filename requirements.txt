@@ -6,3 +6,4 @@ plotly
 pillow
 opencv-python
 matplotlib
+reportlab
