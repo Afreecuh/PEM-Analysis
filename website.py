@@ -203,8 +203,6 @@ def otsu_segmentation():
         "Oxidation/Impurity Coverage": (pixel_areas[4] / total_area) * 100 if total_area > 0 else 0,
     }
 
-    st.write("✅ Debug: 存入 session_state.analysis_df")
-    st.write(st.session_state.analysis_df)
 
 
 # In[ ]:
@@ -336,7 +334,7 @@ def analyze_particles_page():
 
 
 def show_user_guide():
-    """使用 Streamlit sidebar 顯示 User Guide"""
+    """顯示 User Guide 內容，根據目前頁面選擇對應說明"""
     guide_content = {
         1: """
         ### **Page 1: Upload Image & Scale Annotation**
@@ -366,10 +364,20 @@ def show_user_guide():
           - Irregular
           - Polygon
         - Hover over the charts to see **detailed values**.
-        """
+        """,
+        4: """
+        ### **Page 4: Download Report**
+        - Click **"Generate PDF Report"** to create a detailed analysis report.
+        - The report includes:
+          - Scale information
+          - Multi-Otsu segmentation analysis
+          - Particle shape analysis
+          - Circularity distribution
+        - Click **"Download PDF"** to save the report to your device.
+        """,
     }
 
-    st.sidebar.title("📖 User Guide")
+    st.sidebar.title("📖 **User Guide**")
     st.sidebar.markdown(guide_content.get(st.session_state.page, "No guide available for this page."))
 
 
@@ -387,46 +395,91 @@ def generate_pdf():
     pdf = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
-    pdf.setFont("Helvetica-Bold", 16)
-    pdf.drawString(200, 750, "SEM Image Analysis Report")
+    # **標題**
+    pdf.setFont("Helvetica-Bold", 18)
+    pdf.drawCentredString(width / 2, 770, "SEM Image Analysis Report")
     pdf.setFont("Helvetica", 12)
-    pdf.drawString(200, 730, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    pdf.line(50, 720, 550, 720)
+    pdf.drawCentredString(width / 2, 750, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    pdf.line(50, 740, 550, 740)
 
+    # **插入 SEM 圖像**
     if st.session_state.image:
         img_buffer = io.BytesIO()
         st.session_state.image.save(img_buffer, format="PNG")
         img_reader = ImageReader(img_buffer)
-        pdf.drawImage(img_reader, 150, 500, width=300, height=200)
+        pdf.drawImage(img_reader, 100, 520, width=400, height=200)  # **調整尺寸並置中**
 
+    # **比例尺資訊**
     pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, 470, "Scale Information")
+    pdf.drawString(50, 500, "Scale Information")
     pdf.setFont("Helvetica", 12)
-    pdf.drawString(50, 450, f"Pixel to µm Ratio: {st.session_state.get('pixel_to_um', 'N/A')} µm/px")
+    pixel_to_um = st.session_state.get('pixel_to_um', None)
+    if pixel_to_um:
+        pdf.drawString(50, 480, f"Pixel to µm Ratio: {pixel_to_um:.6f} µm/px")  # **控制顯示小數位數**
+    else:
+        pdf.drawString(50, 480, "⚠️ No scale information available.")
 
+    pdf.line(50, 470, 550, 470)  # **分隔線**
+
+    # **Multi-Otsu 分割分析**
     pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, 420, "Multi-Otsu Segmentation Analysis")
+    pdf.drawString(50, 450, "Multi-Otsu Segmentation Analysis")
     pdf.setFont("Helvetica", 12)
     analysis_df = st.session_state.get("analysis_df", None)
+    y_offset = 430
     if analysis_df is not None and not analysis_df.empty:
-        y_offset = 400
-        for i, row in analysis_df.iterrows():
+        for _, row in analysis_df.iterrows():
             pdf.drawString(50, y_offset, f"{row['Layer']}: {row['Physical Area (µm²)']:.2f} µm² ({row['Area Percentage (%)']:.2f}%)")
             y_offset -= 20
     else:
-        pdf.drawString(50, 400, "⚠️ No segmentation data available.")
+        pdf.drawString(50, 430, "⚠️ No segmentation data available.")
 
+    pdf.line(50, y_offset - 10, 550, y_offset - 10)  # **分隔線**
+    y_offset -= 30
+
+    # **額外分析指標**
     pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, 250, "Additional Metrics")
+    pdf.drawString(50, y_offset, "Additional Metrics")
     pdf.setFont("Helvetica", 12)
     extra_metrics = st.session_state.get("extra_metrics", {})
+    y_offset -= 20
     if extra_metrics:
-        y_offset = 230
         for key, value in extra_metrics.items():
             pdf.drawString(50, y_offset, f"{key}: {value:.2f}%")
             y_offset -= 20
     else:
-        pdf.drawString(50, 230, "⚠️ No additional metrics available.")
+        pdf.drawString(50, y_offset, "⚠️ No additional metrics available.")
+
+    pdf.line(50, y_offset - 10, 550, y_offset - 10)  # **分隔線**
+    y_offset -= 30
+
+    # **顆粒形狀分析**
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(50, y_offset, "Particle Shape Analysis")
+    pdf.setFont("Helvetica", 12)
+    shape_analysis = st.session_state.get("shape_analysis", {})
+    y_offset -= 20
+    if shape_analysis:
+        for shape, count in shape_analysis.items():
+            pdf.drawString(50, y_offset, f"{shape}: {count} particles")
+            y_offset -= 20
+    else:
+        pdf.drawString(50, y_offset, "⚠️ No shape analysis data available.")
+
+    pdf.line(50, y_offset - 10, 550, y_offset - 10)  # **分隔線**
+    y_offset -= 30
+
+    # **Circularity 分析**
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(50, y_offset, "Circularity Distribution")
+    pdf.setFont("Helvetica", 12)
+    circularity_data = st.session_state.get("circularity_data", [])
+    y_offset -= 20
+    if circularity_data:
+        avg_circularity = sum(circularity_data) / len(circularity_data)
+        pdf.drawString(50, y_offset, f"Average Circularity: {avg_circularity:.2f}")
+    else:
+        pdf.drawString(50, y_offset, "⚠️ No circularity data available.")
 
     pdf.save()
     buffer.seek(0)
@@ -434,21 +487,39 @@ def generate_pdf():
 
 
 
+
 # In[ ]:
 
 
 def download_report_page():
-    st.title("📄 Download Report")
+    inject_ga()
+    st.title("📄 **Download Report**")
     st.write("Click the button below to generate and download your SEM analysis report as a PDF.")
 
-    if st.button("Generate PDF Report"):
-        pdf_buffer = generate_pdf()
-        st.download_button(
-            label="📥 Download Report",
-            data=pdf_buffer,
-            file_name="SEM_Analysis_Report.pdf",
-            mime="application/pdf"
-        )
+    # **增加區塊外觀**
+    st.markdown("---")
+
+    # **居中顯示下載按鈕**
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("📥 Generate PDF Report", use_container_width=True):
+            pdf_buffer = generate_pdf()
+            st.success("✅ Report generated successfully! Click below to download.")
+            st.download_button(
+                label="📄 **Download PDF**",
+                data=pdf_buffer,
+                file_name="SEM_Analysis_Report.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+
+    st.markdown("---")
+
+    # **頁面導航按鈕**
+    col_prev, _, _ = st.columns([1, 3, 1])
+    with col_prev:
+        if st.button("⬅️ Previous", use_container_width=True):
+            st.session_state.page -= 1
 
 
 # In[3]:
