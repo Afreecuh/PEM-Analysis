@@ -244,6 +244,39 @@ def classify_shape(circularity, aspect_ratio, solidity):
         return "Polygon"
 
 # **分析顆粒**
+def analyze_particles(image):
+    img_gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
+    img_eq = cv2.equalizeHist(img_gray)
+    img_blur = cv2.GaussianBlur(img_eq, (5, 5), 0)  # **還原為 GaussianBlur**
+
+    # **Multi-Otsu 分割**
+    thresholds = threshold_multiotsu(img_blur, classes=NUM_CLASSES)
+    segmented = np.digitize(img_blur, bins=thresholds)
+
+    # **產生二值化遮罩**
+    binary = (segmented == 2).astype(np.uint8) * 255
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    circularities = []
+    shape_labels = []
+
+    # **生成輪廓標記影像**
+    img_with_contours = cv2.cvtColor(img_gray, cv2.COLOR_GRAY2BGR)
+
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area > 50:  # **過濾掉小面積顆粒**
+            circularity, aspect_ratio, solidity = calculate_shape_features(contour)
+            shape = classify_shape(circularity, aspect_ratio, solidity)
+            circularities.append(circularity)
+            shape_labels.append(shape)
+
+            # **在影像上標註顆粒輪廓**
+            cv2.drawContours(img_with_contours, [contour], -1, (0, 255, 255), 2)
+
+    return circularities, shape_labels, binary, img_with_contours
+
+# **Streamlit 介面**
 def analyze_particles_page():
     st.title("🔬 SEM 顆粒形狀分析")
 
@@ -295,6 +328,7 @@ def analyze_particles_page():
             st.image(img_with_contours, caption="Segmented Image with Contours", use_column_width=True)
     else:
         st.warning("⚠️ 沒有偵測到顆粒")
+
 
 
 # User Guide
