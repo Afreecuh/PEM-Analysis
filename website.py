@@ -361,6 +361,79 @@ def show_user_guide():
     st.sidebar.markdown(guide_content.get(st.session_state.page, "No guide available for this page."))
 
 
+# In[ ]:
+
+
+import io
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
+from datetime import datetime
+
+def generate_pdf():
+    """生成 PDF 報告"""
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    
+    # **封面**
+    pdf.setFont("Helvetica-Bold", 16)
+    pdf.drawString(200, 750, "SEM Image Analysis Report")
+    pdf.setFont("Helvetica", 12)
+    pdf.drawString(200, 730, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    pdf.line(50, 720, 550, 720)
+    
+    # **插入 SEM 圖像**
+    if st.session_state.image:
+        img_buffer = io.BytesIO()
+        st.session_state.image.save(img_buffer, format="PNG")
+        img_reader = ImageReader(img_buffer)
+        pdf.drawImage(img_reader, 150, 500, width=300, height=200)
+    
+    # **比例尺資訊**
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(50, 470, "Scale Information")
+    pdf.setFont("Helvetica", 12)
+    if st.session_state.pixel_to_um:
+        pdf.drawString(50, 450, f"Pixel to µm Ratio: {st.session_state.pixel_to_um:.4f} µm/px")
+    
+    # **Multi-Otsu 分割分析**
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(50, 420, "Multi-Otsu Segmentation Analysis")
+    pdf.setFont("Helvetica", 12)
+    for i, row in st.session_state.analysis_df.iterrows():
+        pdf.drawString(50, 400 - i * 20, f"{row['Layer']}: {row['Physical Area (µm²)']:.2f} µm² ({row['Area Percentage (%)']:.2f}%)")
+    
+    # **顆粒形狀分析**
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(50, 250, "Particle Shape Analysis")
+    pdf.setFont("Helvetica", 12)
+    for shape, count in st.session_state.shape_analysis.items():
+        pdf.drawString(50, 230 - list(st.session_state.shape_analysis.keys()).index(shape) * 20, f"{shape}: {count} particles")
+    
+    # **存儲 PDF 並返回**
+    pdf.save()
+    buffer.seek(0)
+    return buffer
+
+
+# In[ ]:
+
+
+def download_report_page():
+    st.title("📄 Download Report")
+    st.write("Click the button below to generate and download your SEM analysis report as a PDF.")
+
+    if st.button("Generate PDF Report"):
+        pdf_buffer = generate_pdf()
+        st.download_button(
+            label="📥 Download Report",
+            data=pdf_buffer,
+            file_name="SEM_Analysis_Report.pdf",
+            mime="application/pdf"
+        )
+
+
 # In[3]:
 
 
@@ -454,6 +527,8 @@ def main():
         otsu_segmentation()
     elif st.session_state.page == 3:
         analyze_particles_page()
+    elif st.session_state.page == 4:
+        download_report_page()  # **新增下載報告頁面**
 
     # **頁面導航按鈕**
     col1, col2 = st.columns([1, 5])
@@ -462,9 +537,10 @@ def main():
             if st.button("Previous"):
                 st.session_state.page -= 1
     with col2:
-        if st.session_state.page < 3:
+        if st.session_state.page < 4:  # **修改最大頁數**
             if st.button("Next"):
                 st.session_state.page += 1
+
 
 if __name__ == "__main__":
     main()
