@@ -419,12 +419,48 @@ def generate_pdf():
     pdf.drawString(50, 480, f"Pixel to µm Ratio: {pixel_to_um:.6f} µm/px" if pixel_to_um else "⚠️ No scale information available.")
     pdf.line(50, 470, 550, 470)
 
-    # **顆粒形狀分析**
+    # **Multi-Otsu Segmentation Analysis**
     pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, 350, "Particle Shape Analysis")
+    pdf.drawString(50, 450, "Multi-Otsu Segmentation Analysis")
+    pdf.setFont("Helvetica", 12)
+    segmentation_data = st.session_state.get("analysis_df", None)
+    y_offset = 430
+
+    if segmentation_data is not None:
+        for _, row in segmentation_data.iterrows():
+            pdf.drawString(50, y_offset, f"{row['Layer']}: {row['Physical Area (µm²)']:.2f} µm² ({row['Area Percentage (%)']:.2f}%)")
+            y_offset -= 20
+    else:
+        pdf.drawString(50, y_offset, "⚠️ No segmentation data available.")
+
+    pdf.line(50, y_offset - 10, 550, y_offset - 10)
+    y_offset -= 30
+
+    # **Additional Metrics**
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(50, y_offset, "Additional Metrics")
+    pdf.setFont("Helvetica", 12)
+    additional_metrics = {
+        "Porosity Ratio": st.session_state.get("porosity_ratio", None),
+        "Catalyst Coverage": st.session_state.get("catalyst_coverage", None),
+        "Agglomeration Ratio": st.session_state.get("agglomeration_ratio", None),
+        "Oxidation/Impurity Coverage": st.session_state.get("oxidation_ratio", None)
+    }
+    y_offset -= 20
+
+    for metric, value in additional_metrics.items():
+        if value is not None:
+            pdf.drawString(50, y_offset, f"{metric}: {value:.2f}%")
+            y_offset -= 20
+    pdf.line(50, y_offset - 10, 550, y_offset - 10)
+    y_offset -= 30
+
+    # **Particle Shape Analysis**
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(50, y_offset, "Particle Shape Analysis")
     pdf.setFont("Helvetica", 12)
     shape_analysis = st.session_state.get("shape_analysis", {})
-    y_offset = 330
+    y_offset -= 20
 
     if shape_analysis:
         pdf.setFont("Helvetica-Bold", 12)
@@ -432,7 +468,7 @@ def generate_pdf():
         pdf.drawString(250, y_offset, "Count")
         pdf.line(50, y_offset - 5, 550, y_offset - 5)
         y_offset -= 20
-        
+
         pdf.setFont("Helvetica", 12)
         for shape, count in shape_analysis.items():
             pdf.drawString(50, y_offset, shape)
