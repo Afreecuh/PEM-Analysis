@@ -513,6 +513,7 @@ def download_report_page():
 
 import plotly.graph_objects as go
 import numpy as np
+import streamlit as st
 
 def view_3d_model():
     st.title("🧊 3D Layered Material Viewer")
@@ -527,30 +528,31 @@ def view_3d_model():
         return
 
     # Remove debug info
-    # st.subheader("🧪 Mask Debug Info")
-    # total_voxels = 0
     points = []
 
-    # 定義顏色和透明度
+    # Define colors and opacity for each layer
     colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
 
-    # 分層設定
-    layer_offset = 0.1  # 每層的 z 方向偏移量
-    for i, mask in enumerate(masks):
-        z_offset = i * layer_offset  # 每層拉高 0.1
-        ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
-        for y, x in zip(ys, xs):
-            points.append((x, y, z_offset, colors[i]))  # 顏色根據層次設置
+    # Layer offset to separate the layers in the z-direction for clarity
+    layer_offset = 0.1  # Each layer will be offset in the z-direction by this value
 
-    # 顯示點數和範圍
+    # Collect all points for the 3D scatter plot
+    for i, mask in enumerate(masks):
+        z_offset = i * layer_offset  # Offset for the current layer in the z-direction
+        ys, xs = np.where(mask > 0)  # Get the coordinates of the non-zero pixels (material points)
+        for y, x in zip(ys, xs):
+            points.append((x, y, z_offset, colors[i]))  # Add the point along with the color for the current layer
+
+    # Display the total number of points and render range
     x, y, z, color = zip(*points)
     total_voxels = len(x)
     st.write(f"Total points to render: {total_voxels}")
 
-    # 使用 go.Scatter3d 顯示每層顏色，增加層次感
+    # Create a 3D scatter plot using Plotly
     fig = go.Figure()
 
     for i, c in enumerate(colors):
+        # Filter points by the current layer's color
         layer_points = [(x_val, y_val, z_val) for x_val, y_val, z_val, col in zip(x, y, z, color) if col == c]
         if layer_points:
             x_layer, y_layer, z_layer = zip(*layer_points)
@@ -559,10 +561,11 @@ def view_3d_model():
                 y=y_layer,
                 z=z_layer,
                 mode='markers',
-                marker=dict(size=2, color=c, opacity=0.7),  # 調整粒子大小和透明度
+                marker=dict(size=2, color=c, opacity=0.7),  # Adjust the particle size and opacity for better visibility
                 name=f"Layer {i+1}"
             ))
 
+    # Update the layout of the 3D plot
     fig.update_layout(
         scene=dict(
             xaxis_title='X',
@@ -576,11 +579,12 @@ def view_3d_model():
 
     st.plotly_chart(fig, use_container_width=True)
 
+    # Add additional description
     st.markdown("""
     🧬 This interactive 3D model shows **5 material layers** segmented from your SEM image.
-
+    
     Each layer is visually separated in 3D space for clarity.
-
+    
     Rotate, zoom, and explore internal structures layer-by-layer.
     """)
 
