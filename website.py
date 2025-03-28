@@ -513,6 +513,7 @@ def download_report_page():
 
 import plotly.graph_objects as go
 import numpy as np
+import streamlit as st
 
 def view_3d_model():
     st.title("🧊 3D Layered Material Viewer")
@@ -526,26 +527,36 @@ def view_3d_model():
         st.error("⚠️ Incomplete mask data.")
         return
 
+    # Remove debug info
     points = []
-    # 設定每層的顏色
+
+    # 定義顏色和透明度
     colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
 
-    # 正規化強度並映射到z範圍 [0, 1]
+    # 使用來自原圖的像素強度來設定每個層的深度
+    z_min, z_max = 0.0, 1.0  # 深度範圍
     for i, mask in enumerate(masks):
         ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
-        intensities = mask[ys, xs]  # 取得這些點的強度
-        norm_intensities = (intensities - intensities.min()) / (intensities.max() - intensities.min())  # 正規化到[0, 1]
-        
-        # 使用正規化的強度來設定z深度
-        for y, x, norm_intensity in zip(ys, xs, norm_intensities):
-            points.append((x, y, norm_intensity, colors[i]))  # 顏色根據層次設置
+
+        # 將像素強度映射到[0, 1]範圍內
+        pixel_values = mask[ys, xs]  # 根據 mask 擷取像素強度
+        if np.any(pixel_values != 0):  # 確保不會除以零
+            pixel_min = np.min(pixel_values)
+            pixel_max = np.max(pixel_values)
+            normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)  # 強度歸一化
+        else:
+            normed_depth = np.zeros_like(pixel_values)  # 如果所有強度為零，則設定為零
+
+        # 根據歸一化後的強度賦予深度
+        for y, x, depth in zip(ys, xs, normed_depth):
+            points.append((x, y, depth, colors[i]))  # 顏色根據層次設置
 
     # 顯示點數和範圍
     x, y, z, color = zip(*points)
     total_voxels = len(x)
     st.write(f"Total points to render: {total_voxels}")
 
-    # 使用 go.Scatter3d 顯示每層顏色
+    # 使用 go.Scatter3d 顯示每層顏色，增加層次感
     fig = go.Figure()
 
     for i, c in enumerate(colors):
@@ -557,7 +568,7 @@ def view_3d_model():
                 y=y_layer,
                 z=z_layer,
                 mode='markers',
-                marker=dict(size=1, color=c, opacity=0.7),  # 固定粒子大小為1，透明度為0.7
+                marker=dict(size=1, color=c, opacity=0.7),  # 固定粒子大小為1，並保持透明度
                 name=f"Layer {i+1}"
             ))
 
@@ -576,11 +587,12 @@ def view_3d_model():
 
     st.markdown("""
     🧬 This interactive 3D model shows **5 material layers** segmented from your SEM image.
-
+    
     Each layer is visually separated in 3D space for clarity.
-
+    
     Rotate, zoom, and explore internal structures layer-by-layer.
     """)
+
 
 
 # In[3]:
