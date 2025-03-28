@@ -538,7 +538,7 @@ def view_3d_model():
     for i, mask in enumerate(masks):
         ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
 
-        # 將像素強度映射到[0, 1]範圍內，並防止除零錯誤
+        # 讀取原圖的強度並進行歸一化處理
         pixel_values = mask[ys, xs]  # 根據 mask 擷取像素強度
         if np.any(pixel_values != 0):  # 確保不會除以零
             pixel_min = np.min(pixel_values)
