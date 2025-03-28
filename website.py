@@ -526,34 +526,33 @@ def view_3d_model():
         return
 
     st.subheader("🧪 Mask Debug Info")
+    total_voxels = 0
+    points = []
+
     for i, mask in enumerate(masks):
         nonzero = np.count_nonzero(mask)
         st.write(f"Layer {i}: Non-zero pixels = {nonzero}")
 
-    depth_per_layer = 5
-    expanded_layers = []
+        z_offset = i * 20  # 每層拉高 20 單位
+        ys, xs = np.where(mask > 0)
+        for y, x in zip(ys, xs):
+            points.append((x, y, z_offset, i + 1))  # i+1 為 value/color index
+        total_voxels += len(xs)
 
-    for i, mask in enumerate(masks):
-        binary = (mask > 0).astype(np.uint8) * (i + 1)
-        for _ in range(depth_per_layer):
-            expanded_layers.append(binary)
+    st.write(f"Total rendered voxels: {total_voxels}")
 
-    volume_data = np.stack(expanded_layers, axis=0).astype(np.uint8)
-
-    z, y, x = volume_data.nonzero()
-    values = volume_data[z, y, x].astype(np.int32)  # 🔧 強制轉型
-
-    # 🔍 Debug 顯示有多少點被畫出來
-    st.write(f"Total rendered voxels: {len(values)}")
-    if len(values) == 0:
+    if total_voxels == 0:
         st.warning("⚠️ No voxels were selected for rendering!")
+        return
+
+    x, y, z, value = zip(*points)
 
     fig = go.Figure(data=go.Volume(
         x=x,
         y=y,
         z=z,
-        value=values,
-        opacity=0.2,
+        value=value,
+        opacity=0.15,
         surface_count=5,
         colorscale='Viridis',
         colorbar=dict(title="Layer Index"),
@@ -563,7 +562,7 @@ def view_3d_model():
         scene=dict(
             xaxis_title='X',
             yaxis_title='Y',
-            zaxis_title='Layer (depth)',
+            zaxis_title='Layer Depth',
             camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
         ),
         margin=dict(l=0, r=0, b=0, t=40),
@@ -575,7 +574,7 @@ def view_3d_model():
     st.markdown("""
     🧬 This interactive 3D model shows **5 material layers** segmented from your SEM image.
 
-    Each layer is expanded with depth to form a visible volume.
+    Each layer is visually separated in 3D space for clarity.
 
     Rotate, zoom, and explore internal structures layer-by-layer.
     """)
