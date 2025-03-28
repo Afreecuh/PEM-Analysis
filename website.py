@@ -529,22 +529,25 @@ def view_3d_model():
     points = []
     # 定義顏色和透明度
     colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
-    
-    # 固定每一層的 Z 範圍，確保它們疊在一起
-    z_range = [0.0, 0.2, 0.4, 0.6, 0.8]  # 每層的 Z 範圍 (這裡假設每層的 Z 範圍是 0.2)
 
     for i, mask in enumerate(masks):
-        z_offset = z_range[i]  # 固定每層的 Z 深度
+        # 計算每層的強度
+        intensity = np.sum(mask)  # 每層的強度是所有非零像素的總和
+
+        # 將每層的強度映射到 0 到 1 之間的深度範圍
+        # 假設強度最大為最大強度，這會將每層的強度正規化到 [0, 1] 範圍內
+        depth = intensity / np.max([np.sum(m) for m in masks])  # 正規化
+
         ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
         for y, x in zip(ys, xs):
-            points.append((x, y, z_offset, colors[i]))  # 根據層次設置顏色
+            points.append((x, y, depth, colors[i]))  # 根據強度分配 z 值
 
     # 顯示點數和範圍
     x, y, z, color = zip(*points)
     total_voxels = len(x)
     st.write(f"Total points to render: {total_voxels}")
 
-    # 使用 go.Scatter3d 顯示每層顏色，並設定粒子大小為1，保持粒子透明度
+    # 使用 go.Scatter3d 顯示每層顏色，並設定粒子大小為 1，保持粒子透明度
     fig = go.Figure()
 
     for i, c in enumerate(colors):
