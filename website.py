@@ -511,9 +511,62 @@ def download_report_page():
 # In[ ]:
 
 
-import plotly.graph_objects as go
 import numpy as np
+import plotly.graph_objects as go
 import streamlit as st
+
+# Debug: 檢查 z 軸強度
+def check_z_distribution(mask):
+    ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
+    pixel_values = mask[ys, xs]  # 根據 mask 擷取像素強度
+    
+    # 計算強度分佈的範圍
+    pixel_min = np.min(pixel_values)
+    pixel_max = np.max(pixel_values)
+    
+    # 如果最大值等於最小值，則顯示警告
+    if pixel_max == pixel_min:
+        print(f"Warning: All pixels in this mask have the same value: {pixel_min}")
+    
+    # 顯示強度範圍
+    print(f"Intensity Range for this layer: {pixel_min} to {pixel_max}")
+
+# 測試 mask 是否正常運行
+for i, mask in enumerate(masks):
+    check_z_distribution(mask)
+
+# Debug: 查看每個點的 z 值
+for i, mask in enumerate(masks):
+    ys, xs = np.where(mask > 0)
+    pixel_values = mask[ys, xs]
+    pixel_min = np.min(pixel_values)
+    pixel_max = np.max(pixel_values)
+    
+    # 歸一化 z 軸
+    normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)
+    
+    print(f"Layer {i+1} - Normalized z values: {normed_depth[:10]}")  # 只打印前10個來檢查
+
+# 繪製 z 軸強度分佈圖
+def plot_z_distribution(mask):
+    ys, xs = np.where(mask > 0)
+    pixel_values = mask[ys, xs]
+    pixel_min = np.min(pixel_values)
+    pixel_max = np.max(pixel_values)
+    
+    normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)
+    
+    plt.hist(normed_depth, bins=50, range=(0, 1))
+    plt.title("Z Axis Distribution for Layer")
+    plt.xlabel("Normalized Z Depth")
+    plt.ylabel("Frequency")
+    plt.show()
+
+# 繪製第一層的分佈圖
+plot_z_distribution(masks[0])
+
+# 下面是繪製 3D 模型的部分...
+
 
 def view_3d_model():
     st.title("🧊 3D Layered Material Viewer")
