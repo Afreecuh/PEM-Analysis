@@ -91,25 +91,27 @@ from skimage.measure import regionprops, label
 def otsu_segmentation():
     inject_ga()
     st.title("Multi-Otsu Thresholding & SEM Analysis")
-    
-    # Fixed number of segmentation classes
+
     num_classes = 5  
-    
+
     if st.session_state.image is None or st.session_state.pixel_to_um is None:
         st.error("⚠️ Please upload an image and set the scale first!")
         return
 
     image_np = np.array(st.session_state.image.convert("L"))
-    pixel_to_um = st.session_state.pixel_to_um
+    image_eq = cv2.equalizeHist(image_np)
+    image_blur = cv2.GaussianBlur(image_eq, (5, 5), 0)
 
-    # Apply Multi-Otsu thresholding
-    thresholds = threshold_multiotsu(image_np, classes=num_classes)
-    segmented_image = np.digitize(image_np, bins=thresholds)
+    # Segmentation
+    thresholds = threshold_multiotsu(image_blur, classes=num_classes)
+    segmented_image = np.digitize(image_blur, bins=thresholds)
+
+    # Show raw segmented preview
+    st.image(segmented_image * int(255 / num_classes), caption="Segmented Classes Preview", clamp=True)
 
     # Always rebuild the class masks
     st.session_state.class_masks = [(segmented_image == i).astype(np.uint8) * 255 for i in range(num_classes)]
 
-    # Setup default layer index
     if "selected_layer_index" not in st.session_state:
         st.session_state.selected_layer_index = 0
 
@@ -124,7 +126,7 @@ def otsu_segmentation():
 
     pixel_areas = [(segmented_image == i).sum() for i in range(num_classes)]
     total_area = sum(pixel_areas)
-    real_physical_sizes = [area * (pixel_to_um ** 2) for area in pixel_areas]
+    real_physical_sizes = [area * (st.session_state.pixel_to_um ** 2) for area in pixel_areas]
     area_percentages = [(size / total_area) * 100 for size in real_physical_sizes]
 
     layer_labels = [
@@ -165,14 +167,14 @@ def otsu_segmentation():
     ax.set_title(f"{selected_layer} (Layer {st.session_state.selected_layer_index})")
     ax.axis("off")
     st.pyplot(fig)
-    
+
     fig_pie = px.pie(df_analysis, names="Layer", values="Area Percentage (%)", title="Area Distribution Across Layers")
     st.plotly_chart(fig_pie, use_container_width=True)
 
-    porosity_ratio = (pixel_areas[0] / total_area) * 100 if len(pixel_areas) > 0 else 0
+    porosity_ratio = (pixel_areas[0] / total_area) * 100 if total_area > 0 else 0
     catalyst_areas = sum(pixel_areas[2:4]) if len(pixel_areas) > 3 else 0
     catalyst_percentage = (catalyst_areas / total_area) * 100 if total_area > 0 else 0
-    agglomeration_ratio = (pixel_areas[3] / catalyst_areas) * 100 if len(pixel_areas) > 3 and catalyst_areas > 0 else 0
+    agglomeration_ratio = (pixel_areas[3] / catalyst_areas) * 100 if catalyst_areas > 0 else 0
     oxidation_ratio = (pixel_areas[4] / total_area) * 100 if len(pixel_areas) > 4 else 0
 
     st.write(f"📌 Porosity Ratio: {porosity_ratio:.2f}%")
@@ -523,7 +525,13 @@ def view_3d_model():
         st.error("⚠️ Incomplete mask data.")
         return
 
-    depth_per_layer = 5  # 🧱 每層要展開幾層厚度
+    # 🔍 Debug 每層 non-zero pixel 數
+    st.subheader("🧪 Mask Debug Info")
+    for i, mask in enumerate(masks):
+        nonzero = np.count_nonzero(mask)
+        st.write(f"Layer {i}: Non-zero pixels = {nonzero}")
+
+    depth_per_layer = 5  # 每層展開深度
     expanded_layers = []
 
     for i, mask in enumerate(masks):
