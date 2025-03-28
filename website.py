@@ -526,10 +526,10 @@ def check_z_distribution(mask):
     
     # 如果最大值等於最小值，則顯示警告
     if pixel_max == pixel_min:
-        print(f"Warning: All pixels in this mask have the same value: {pixel_min}")
+        st.warning(f"Warning: All pixels in this mask have the same value: {pixel_min}")
     
     # 顯示強度範圍
-    print(f"Intensity Range for this layer: {pixel_min} to {pixel_max}")
+    st.write(f"Intensity Range for this layer: {pixel_min} to {pixel_max}")
 
 # 測試 mask 是否正常運行
 def test_masks():
@@ -633,7 +633,6 @@ def view_3d_model():
     
     Rotate, zoom, and explore internal structures layer-by-layer.
     """)
-
 
 
 # In[3]:
