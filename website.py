@@ -538,12 +538,16 @@ def view_3d_model():
     for i, mask in enumerate(masks):
         ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
 
-        # 將像素強度映射到[0, 1]範圍內
+        # 將像素強度映射到[0, 1]範圍內，並防止除零錯誤
         pixel_values = mask[ys, xs]  # 根據 mask 擷取像素強度
         if np.any(pixel_values != 0):  # 確保不會除以零
             pixel_min = np.min(pixel_values)
             pixel_max = np.max(pixel_values)
-            normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)  # 強度歸一化
+            # 防止除以零，將零強度設定為最小非零強度的值
+            if pixel_max > pixel_min:
+                normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)  # 強度歸一化
+            else:
+                normed_depth = np.zeros_like(pixel_values)  # 如果最大值等於最小值，則設定為零
         else:
             normed_depth = np.zeros_like(pixel_values)  # 如果所有強度為零，則設定為零
 
@@ -592,7 +596,6 @@ def view_3d_model():
     
     Rotate, zoom, and explore internal structures layer-by-layer.
     """)
-
 
 
 # In[3]:
