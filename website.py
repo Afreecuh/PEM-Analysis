@@ -514,11 +514,6 @@ def download_report_page():
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
-from skimage.measure import label, regionprops
-import matplotlib.pyplot as plt
-import cv2
-import pandas as pd
-import plotly.express as px
 
 # Debug: 檢查 z 軸強度
 def check_z_distribution(mask):
@@ -591,8 +586,10 @@ def view_3d_model():
         else:
             normed_depth = np.zeros_like(pixel_values)  # 如果最大值等於最小值，則設定為零
 
-        # 根據歸一化後的強度設置 z 軸深度
+        # 根據歸一化後的強度設置 z 軸深度，這樣每一層的粒子都會有不同的深度
         for y, x, depth in zip(ys, xs, normed_depth):
+            # 将深度从 [0, 1] 范围调整到 [-0.5, 0.5] 以避免超出正常范围
+            depth = (depth * 2) - 1  # 扩展到[-1, 1]
             points.append((x, y, depth, colors[i]))  # 顏色根據層次設置
 
     # 顯示點數和範圍
@@ -636,6 +633,7 @@ def view_3d_model():
     
     Rotate, zoom, and explore internal structures layer-by-layer.
     """)
+
 
 
 # In[3]:
