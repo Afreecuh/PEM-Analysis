@@ -513,107 +513,46 @@ def download_report_page():
 
 import numpy as np
 import plotly.graph_objects as go
-import streamlit as st
 
-# Debug: 檢查 z 軸強度
-def check_z_distribution(mask):
-    ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
-    pixel_values = mask[ys, xs]  # 根據 mask 擷取像素強度
-    
-    # 計算強度分佈的範圍
-    pixel_min = np.min(pixel_values)
-    pixel_max = np.max(pixel_values)
-    
-    # 如果最大值等於最小值，則顯示警告
-    if pixel_max == pixel_min:
-        print(f"Warning: All pixels in this mask have the same value: {pixel_min}")
-    
-    # 顯示強度範圍
-    print(f"Intensity Range for this layer: {pixel_min} to {pixel_max}")
-
-# 測試 mask 是否正常運行
-for i, mask in enumerate(masks):
-    check_z_distribution(mask)
-
-# Debug: 查看每個點的 z 值
-for i, mask in enumerate(masks):
-    ys, xs = np.where(mask > 0)
-    pixel_values = mask[ys, xs]
-    pixel_min = np.min(pixel_values)
-    pixel_max = np.max(pixel_values)
-    
-    # 歸一化 z 軸
-    normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)
-    
-    print(f"Layer {i+1} - Normalized z values: {normed_depth[:10]}")  # 只打印前10個來檢查
-
-# 繪製 z 軸強度分佈圖
-def plot_z_distribution(mask):
-    ys, xs = np.where(mask > 0)
-    pixel_values = mask[ys, xs]
-    pixel_min = np.min(pixel_values)
-    pixel_max = np.max(pixel_values)
-    
-    normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)
-    
-    plt.hist(normed_depth, bins=50, range=(0, 1))
-    plt.title("Z Axis Distribution for Layer")
-    plt.xlabel("Normalized Z Depth")
-    plt.ylabel("Frequency")
-    plt.show()
-
-# 繪製第一層的分佈圖
-plot_z_distribution(masks[0])
-
-# 下面是繪製 3D 模型的部分...
-
-
-def view_3d_model():
-    st.title("🧊 3D Layered Material Viewer")
-
-    if "class_masks" not in st.session_state:
-        st.error("⚠️ Please perform Multi-Otsu Segmentation first!")
+def visualize_layers():
+    # 确保 class_masks 已定义
+    if "class_masks" not in st.session_state or not st.session_state.class_masks:
+        st.error("⚠️ Masks are not available!")
         return
-
+    
+    # 获取 class_masks
     masks = st.session_state.class_masks
-    if not masks or len(masks) < 5:
-        st.error("⚠️ Incomplete mask data.")
-        return
-
-    points = []
-
-    # 定義顏色和透明度
+    
+    # 配置图层颜色
     colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
-
-    # 根據原圖的強度來設置 z 軸的位置
+    
+    points = []
+    
+    # 遍历每个图层
     for i, mask in enumerate(masks):
-        ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
-
-        # 讀取原圖的強度並進行歸一化處理
-        pixel_values = mask[ys, xs]  # 根據 mask 擷取像素強度
-        pixel_min = np.min(pixel_values)
-        pixel_max = np.max(pixel_values)
+        ys, xs = np.where(mask > 0)  # 获取所有非零像素的位置
         
-        # 防止除以零，將零強度設定為最小非零強度的值
-        if pixel_max > pixel_min:
-            normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)  # 強度歸一化
-        else:
-            normed_depth = np.zeros_like(pixel_values)  # 如果最大值等於最小值，則設定為零
-
-        # 根據歸一化後的強度設置 z 軸深度
-        for y, x, depth in zip(ys, xs, normed_depth):
-            points.append((x, y, depth, colors[i]))  # 顏色根據層次設置
-
-    # 顯示點數和範圍
+        pixel_values = mask[ys, xs]  # 获取强度值
+        pixel_min = pixel_values.min()
+        pixel_max = pixel_values.max()
+        
+        # 强度归一化
+        normed_z = (pixel_values - pixel_min) / (pixel_max - pixel_min)  # 归一化到 [0, 1]
+        
+        # 添加对应点的信息
+        for y, x, z in zip(ys, xs, normed_z):
+            points.append((x, y, z, colors[i]))  # 存储点的位置和对应颜色
+    
+    # 解压点
     x, y, z, color = zip(*points)
-    total_voxels = len(x)
-    st.write(f"Total points to render: {total_voxels}")
 
-    # 使用 go.Scatter3d 顯示每層顏色，增加層次感
+    # 使用 Plotly 进行可视化
     fig = go.Figure()
 
     for i, c in enumerate(colors):
+        # 将颜色设置为图层的颜色
         layer_points = [(x_val, y_val, z_val) for x_val, y_val, z_val, col in zip(x, y, z, color) if col == c]
+        
         if layer_points:
             x_layer, y_layer, z_layer = zip(*layer_points)
             fig.add_trace(go.Scatter3d(
@@ -621,7 +560,7 @@ def view_3d_model():
                 y=y_layer,
                 z=z_layer,
                 mode='markers',
-                marker=dict(size=1, color=c, opacity=0.7),  # 固定粒子大小為1，並保持透明度
+                marker=dict(size=1, color=c, opacity=0.7),
                 name=f"Layer {i+1}"
             ))
 
@@ -645,6 +584,7 @@ def view_3d_model():
     
     Rotate, zoom, and explore internal structures layer-by-layer.
     """)
+
 
 
 # In[3]:
