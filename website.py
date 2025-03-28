@@ -512,6 +512,7 @@ def download_report_page():
 
 
 import plotly.graph_objects as go
+import numpy as np
 
 def view_3d_model():
     st.title("🧊 3D Layered Material Viewer")
@@ -529,14 +530,19 @@ def view_3d_model():
     total_voxels = 0
     points = []
 
+    # 定義顏色和透明度
+    colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
+
+    # 分層設定
+    layer_offset = 0.1  # 每層的 z 方向偏移量
     for i, mask in enumerate(masks):
         nonzero = np.count_nonzero(mask)
         st.write(f"Layer {i}: Non-zero pixels = {nonzero}")
 
-        z_offset = i * 20  # 每層拉高 20 單位
+        z_offset = i * layer_offset  # 每層拉高 0.1
         ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
         for y, x in zip(ys, xs):
-            points.append((x, y, z_offset, i + 1))  # i+1 為 value/color index
+            points.append((x, y, z_offset, colors[i]))  # 顏色根據層次設置
         total_voxels += len(xs)
 
     st.write(f"Total rendered voxels: {total_voxels}")
@@ -545,23 +551,27 @@ def view_3d_model():
         st.warning("⚠️ No voxels were selected for rendering!")
         return
 
-    x, y, z, value = zip(*points)
+    x, y, z, color = zip(*points)
 
-    # Debug values and coordinates
+    # 顯示調試信息
     st.write(f"First few points: {points[:5]}")
     st.write(f"Total points to render: {len(points)}")
-    st.write(f"x range: {min(x)} - {max(x)}")
-    st.write(f"y range: {min(y)} - {max(y)}")
-    st.write(f"z range: {min(z)} - {max(z)}")
 
-    # 用 scatter3d 測試能否顯示3D點
-    fig = go.Figure(data=go.Scatter3d(
-        x=x,
-        y=y,
-        z=z,
-        mode='markers',
-        marker=dict(size=4, color=value, colorscale='Jet', opacity=0.8),
-    ))
+    # 使用 go.Scatter3d 顯示每層顏色，增加層次感
+    fig = go.Figure()
+
+    for i, c in enumerate(colors):
+        layer_points = [(x_val, y_val, z_val) for x_val, y_val, z_val, col in zip(x, y, z, color) if col == c]
+        if layer_points:
+            x_layer, y_layer, z_layer = zip(*layer_points)
+            fig.add_trace(go.Scatter3d(
+                x=x_layer,
+                y=y_layer,
+                z=z_layer,
+                mode='markers',
+                marker=dict(size=4, color=c, opacity=0.8),
+                name=f"Layer {i+1}"
+            ))
 
     fig.update_layout(
         scene=dict(
