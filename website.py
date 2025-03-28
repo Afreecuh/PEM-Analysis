@@ -92,7 +92,7 @@ def otsu_segmentation():
     inject_ga()
     st.title("Multi-Otsu Thresholding & SEM Analysis")
     
-    # **Fixed number of segmentation classes = 5**
+    # Fixed number of segmentation classes
     num_classes = 5  
     
     if st.session_state.image is None or st.session_state.pixel_to_um is None:
@@ -102,28 +102,26 @@ def otsu_segmentation():
     image_np = np.array(st.session_state.image.convert("L"))
     pixel_to_um = st.session_state.pixel_to_um
 
-    # **Apply Multi-Otsu threshold segmentation**
+    # Apply Multi-Otsu thresholding
     thresholds = threshold_multiotsu(image_np, classes=num_classes)
     segmented_image = np.digitize(image_np, bins=thresholds)
 
-    # **Compute class masks once**
-    if "class_masks" not in st.session_state:
-        st.session_state.class_masks = [(segmented_image == i).astype(np.uint8) * 255 for i in range(num_classes)]
+    # Always rebuild the class masks
+    st.session_state.class_masks = [(segmented_image == i).astype(np.uint8) * 255 for i in range(num_classes)]
 
-    # **Initialize selected layer index**
+    # Setup default layer index
     if "selected_layer_index" not in st.session_state:
         st.session_state.selected_layer_index = 0
 
-    # **Generate masks and compute stats**
     labeled_masks = [label(mask) for mask in st.session_state.class_masks]
     class_properties = [regionprops(labeled_mask) for labeled_mask in labeled_masks]
-    
+
     num_regions = [len(props) for props in class_properties]
     avg_area_per_region = [
         np.mean([prop.area for prop in props]) if len(props) > 0 else 0 
         for props in class_properties
     ]
-    
+
     pixel_areas = [(segmented_image == i).sum() for i in range(num_classes)]
     total_area = sum(pixel_areas)
     real_physical_sizes = [area * (pixel_to_um ** 2) for area in pixel_areas]
@@ -148,20 +146,17 @@ def otsu_segmentation():
 
     st.dataframe(df_analysis)
 
-    # **Bar chart**
     fig_bar = px.bar(df_analysis, x="Layer", y="Physical Area (µm²)", title="Physical Area of Each Layer")
     fig_bar.update_traces(customdata=layer_labels, hoverinfo="x+y")
     st.plotly_chart(fig_bar, use_container_width=True)
-    
-    st.write("### Layer Visualization")
 
+    st.write("### Layer Visualization")
     selected_layer = st.selectbox(
-        "Select a Layer to Display", 
+        "Select Layer to Visualize", 
         layer_labels, 
         index=st.session_state.get("selected_layer_index", 0),
         key="layer_selection"
     )
-
     if selected_layer:
         st.session_state.selected_layer_index = layer_labels.index(selected_layer)
 
@@ -171,18 +166,16 @@ def otsu_segmentation():
     ax.axis("off")
     st.pyplot(fig)
     
-    # **Pie chart**
     fig_pie = px.pie(df_analysis, names="Layer", values="Area Percentage (%)", title="Area Distribution Across Layers")
     st.plotly_chart(fig_pie, use_container_width=True)
 
-    # **Extra metrics**
     porosity_ratio = (pixel_areas[0] / total_area) * 100 if len(pixel_areas) > 0 else 0
     catalyst_areas = sum(pixel_areas[2:4]) if len(pixel_areas) > 3 else 0
     catalyst_percentage = (catalyst_areas / total_area) * 100 if total_area > 0 else 0
     agglomeration_ratio = (pixel_areas[3] / catalyst_areas) * 100 if len(pixel_areas) > 3 and catalyst_areas > 0 else 0
     oxidation_ratio = (pixel_areas[4] / total_area) * 100 if len(pixel_areas) > 4 else 0
 
-    st.write(f"📌 Porosity: {porosity_ratio:.2f}%")
+    st.write(f"📌 Porosity Ratio: {porosity_ratio:.2f}%")
     st.write(f"📌 Catalyst Coverage: {catalyst_percentage:.2f}%")
     st.write(f"📌 Agglomeration Ratio: {agglomeration_ratio:.2f}%")
     st.write(f"📌 Oxidation/Impurity Coverage: {oxidation_ratio:.2f}%")
