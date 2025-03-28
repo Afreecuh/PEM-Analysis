@@ -545,25 +545,16 @@ def view_3d_model():
         st.warning("⚠️ No voxels were selected for rendering!")
         return
 
-    # Check if volume data is non-zero
-    if len(points) == 0:
-        st.warning("⚠️ No points to plot!")
-        return
-
     x, y, z, value = zip(*points)
-
-    # Debug values and coordinates
-    st.write(f"First few points: {points[:5]}")
-    st.write(f"Total points to render: {len(points)}")
 
     fig = go.Figure(data=go.Volume(
         x=x,
         y=y,
         z=z,
         value=value,
-        opacity=0.2,
+        opacity=0.6,  # 更高透明度
         surface_count=5,
-        colorscale='Viridis',
+        colorscale='Jet',  # 顏色對比強烈
         colorbar=dict(title="Layer Index"),
     ))
 
