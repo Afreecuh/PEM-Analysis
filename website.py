@@ -511,52 +511,40 @@ def download_report_page():
 # In[ ]:
 
 
-import numpy as np
 import plotly.graph_objects as go
-
-def create_3d_layers_with_intensity(masks, colors, intensity_threshold=0.5, z_range=None):
-    points = []
-    
-    # 如果没有传入 z_range，就根据粒子强度计算一个合理的 z 范围
-    if z_range is None:
-        z_min, z_max = 0, 1  # 初始设置
-        all_intensity = []
-        
-        # 计算所有层的强度，来动态调整 z 范围
-        for mask in masks:
-            intensity = np.sum(mask) / mask.size  # 计算该层的强度
-            all_intensity.append(intensity)
-        
-        # 动态计算 z 范围
-        z_min = min(all_intensity)  # 最小强度
-        z_max = max(all_intensity)  # 最大强度
-        z_range = (z_min, z_max)
-
-    z_min, z_max = z_range  # 获取 z 范围
-    
-    # 计算每层粒子的强度并根据强度设置 z 值
-    for i, mask in enumerate(masks):
-        intensity = np.sum(mask) / mask.size  # 计算该层的强度
-        z_depth = (intensity - z_min) / (z_max - z_min)  # 标准化到 [0, 1] 范围，再映射到 z 范围
-
-        ys, xs = np.where(mask > intensity_threshold)  # 根据强度过滤出有效粒子
-        for y, x in zip(ys, xs):
-            z_pos = z_depth * (z_max - z_min) + z_min  # 映射到具体的 z 位置
-            points.append((x, y, z_pos, colors[i]))  # 根据层级设置颜色
-
-    return points
+import numpy as np
 
 def view_3d_model():
-    # 假设这五张mask的生成
-    masks = [np.random.rand(100, 100) > 0.5 for _ in range(5)]  # 假设五张mask
+    st.title("🧊 3D Layered Material Viewer")
+
+    if "class_masks" not in st.session_state:
+        st.error("⚠️ Please perform Multi-Otsu Segmentation first!")
+        return
+
+    masks = st.session_state.class_masks
+    if not masks or len(masks) < 5:
+        st.error("⚠️ Incomplete mask data.")
+        return
+
+    points = []
+    # 定義顏色和透明度
     colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
     
-    points = create_3d_layers_with_intensity(masks, colors)
+    # 固定每一層的 Z 範圍，確保它們疊在一起
+    z_range = [0.0, 0.2, 0.4, 0.6, 0.8]  # 每層的 Z 範圍 (這裡假設每層的 Z 範圍是 0.2)
 
-    # 提取点
+    for i, mask in enumerate(masks):
+        z_offset = z_range[i]  # 固定每層的 Z 深度
+        ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
+        for y, x in zip(ys, xs):
+            points.append((x, y, z_offset, colors[i]))  # 根據層次設置顏色
+
+    # 顯示點數和範圍
     x, y, z, color = zip(*points)
+    total_voxels = len(x)
+    st.write(f"Total points to render: {total_voxels}")
 
-    # 3D 图形初始化
+    # 使用 go.Scatter3d 顯示每層顏色，並設定粒子大小為1，保持粒子透明度
     fig = go.Figure()
 
     for i, c in enumerate(colors):
@@ -568,7 +556,7 @@ def view_3d_model():
                 y=y_layer,
                 z=z_layer,
                 mode='markers',
-                marker=dict(size=1, color=c, opacity=0.7),  # 设置点的大小为1
+                marker=dict(size=1, color=c, opacity=0.7),  # 粒子大小為 1，透明度為 0.7
                 name=f"Layer {i+1}"
             ))
 
@@ -580,13 +568,18 @@ def view_3d_model():
             camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
         ),
         margin=dict(l=0, r=0, b=0, t=40),
-        title="3D Visualization of Material Structure"
+        title="3D Visualization of 5-Layer Material Structure"
     )
 
-    fig.show()
+    st.plotly_chart(fig, use_container_width=True)
 
-# 调用显示函数
-view_3d_model()
+    st.markdown("""
+    🧬 This interactive 3D model shows **5 material layers** segmented from your SEM image.
+
+    Each layer is visually separated in 3D space for clarity.
+
+    Rotate, zoom, and explore internal structures layer-by-layer.
+    """)
 
 
 # In[3]:
