@@ -525,13 +525,12 @@ def view_3d_model():
         st.error("⚠️ Incomplete mask data.")
         return
 
-    # 🔍 Debug 每層 non-zero pixel 數
     st.subheader("🧪 Mask Debug Info")
     for i, mask in enumerate(masks):
         nonzero = np.count_nonzero(mask)
         st.write(f"Layer {i}: Non-zero pixels = {nonzero}")
 
-    depth_per_layer = 5  # 每層展開深度
+    depth_per_layer = 5
     expanded_layers = []
 
     for i, mask in enumerate(masks):
@@ -539,10 +538,15 @@ def view_3d_model():
         for _ in range(depth_per_layer):
             expanded_layers.append(binary)
 
-    volume_data = np.stack(expanded_layers, axis=0)
+    volume_data = np.stack(expanded_layers, axis=0).astype(np.uint8)
 
     z, y, x = volume_data.nonzero()
-    values = volume_data[z, y, x]
+    values = volume_data[z, y, x].astype(np.int32)  # 🔧 強制轉型
+
+    # 🔍 Debug 顯示有多少點被畫出來
+    st.write(f"Total rendered voxels: {len(values)}")
+    if len(values) == 0:
+        st.warning("⚠️ No voxels were selected for rendering!")
 
     fig = go.Figure(data=go.Volume(
         x=x,
