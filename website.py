@@ -514,35 +514,36 @@ import plotly.graph_objects as go
 def view_3d_model():
     st.title("🧊 3D Layered Material Viewer")
 
-    # Ensure masks are available
     if "class_masks" not in st.session_state:
         st.error("⚠️ Please perform Multi-Otsu Segmentation first!")
         return
 
-    masks = st.session_state.class_masks  # list of 2D np.uint8 masks, len = 5
+    masks = st.session_state.class_masks
+    if not masks or len(masks) < 5:
+        st.error("⚠️ Incomplete mask data.")
+        return
 
-    # Convert each mask to binary and assign unique layer value (1~5)
-    binary_layers = []
+    depth_per_layer = 5  # 🧱 每層要展開幾層厚度
+    expanded_layers = []
+
     for i, mask in enumerate(masks):
-        layer_binary = (mask > 0).astype(np.uint8) * (i + 1)  # values: 1, 2, 3, 4, 5
-        binary_layers.append(layer_binary)
+        binary = (mask > 0).astype(np.uint8) * (i + 1)
+        for _ in range(depth_per_layer):
+            expanded_layers.append(binary)
 
-    # Stack to create volume shape (Z, Y, X)
-    volume_data = np.stack(binary_layers, axis=0)
+    volume_data = np.stack(expanded_layers, axis=0)
 
-    # Get coordinates and values of non-zero voxels
     z, y, x = volume_data.nonzero()
     values = volume_data[z, y, x]
 
-    # Plot with plotly
     fig = go.Figure(data=go.Volume(
         x=x,
         y=y,
         z=z,
         value=values,
-        opacity=0.15,
+        opacity=0.2,
         surface_count=5,
-        colorscale='Jet',
+        colorscale='Viridis',
         colorbar=dict(title="Layer Index"),
     ))
 
@@ -550,7 +551,7 @@ def view_3d_model():
         scene=dict(
             xaxis_title='X',
             yaxis_title='Y',
-            zaxis_title='Layer',
+            zaxis_title='Layer (depth)',
             camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
         ),
         margin=dict(l=0, r=0, b=0, t=40),
@@ -561,7 +562,9 @@ def view_3d_model():
 
     st.markdown("""
     🧬 This interactive 3D model shows **5 material layers** segmented from your SEM image.
-    
+
+    Each layer is expanded with depth to form a visible volume.
+
     Rotate, zoom, and explore internal structures layer-by-layer.
     """)
 
