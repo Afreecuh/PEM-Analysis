@@ -513,6 +513,63 @@ def download_report_page():
             st.session_state.page -= 1
 
 
+# In[ ]:
+
+
+import plotly.graph_objects as go
+
+def view_3d_model():
+    st.title("🧊 3D Layered Material Viewer")
+
+    # Ensure masks are ready
+    if "class_masks" not in st.session_state:
+        st.error("⚠️ Please perform Multi-Otsu Segmentation first!")
+        return
+
+    masks = st.session_state.class_masks  # list of 2D arrays (5 layers)
+
+    # Step 1: build 3D volume data with values 1~5 (layer index)
+    volume_shape = (len(masks),) + masks[0].shape  # (5, H, W)
+    volume_data = np.zeros(volume_shape, dtype=np.uint8)
+
+    for i, mask in enumerate(masks):
+        binary_mask = (mask > 0).astype(np.uint8)
+        volume_data[i] = binary_mask * (i + 1)  # layer 1~5
+
+    # Step 2: Prepare 3D grid
+    z, y, x = volume_data.nonzero()
+    values = volume_data[z, y, x]
+
+    fig = go.Figure(data=go.Volume(
+        x=x,
+        y=y,
+        z=z,
+        value=values,
+        opacity=0.2,
+        surface_count=5,
+        colorscale="Jet",  # or try 'Viridis', 'Hot', etc.
+        colorbar=dict(title="Layer Index"),
+    ))
+
+    fig.update_layout(
+        scene=dict(
+            xaxis_title='X',
+            yaxis_title='Y',
+            zaxis_title='Layer',
+            camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
+        ),
+        margin=dict(l=0, r=0, b=0, t=40),
+        title="3D Visualization of 5-Layer Material Structure"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+    st.markdown("""
+    🧬 This interactive 3D model shows **5 material layers** segmented from your SEM image.
+    
+    Rotate, zoom, and explore internal structures layer-by-layer.
+    """)
+
+
 # In[3]:
 
 
@@ -586,6 +643,7 @@ def upload_and_mark_scale():
 
         handle_scale_annotation()
 
+# **Main Application Entry Point**
 def main():
     if "page" not in st.session_state:
         st.session_state.page = 1
@@ -597,8 +655,10 @@ def main():
     elif st.session_state.page == 2:
         otsu_segmentation()
     elif st.session_state.page == 3:
-        analyze_particles_page()
+        view_3d_model()
     elif st.session_state.page == 4:
+        analyze_particles_page()
+    elif st.session_state.page == 5:
         download_report_page()
 
     col1, col2 = st.columns([1, 5])
@@ -607,7 +667,7 @@ def main():
             if st.button("Previous"):
                 st.session_state.page -= 1
     with col2:
-        if st.session_state.page < 4:
+        if st.session_state.page < 5:
             if st.button("Next"):
                 st.session_state.page += 1
 
