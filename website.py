@@ -511,69 +511,64 @@ def download_report_page():
 # In[ ]:
 
 
-import plotly.graph_objects as go
 import numpy as np
-import streamlit as st
+import plotly.graph_objects as go
+
+def create_3d_layers_with_intensity(masks, colors, intensity_threshold=0.5, z_range=None):
+    points = []
+    
+    # 如果没有传入 z_range，就根据粒子强度计算一个合理的 z 范围
+    if z_range is None:
+        z_min, z_max = 0, 1  # 初始设置
+        all_intensity = []
+        
+        # 计算所有层的强度，来动态调整 z 范围
+        for mask in masks:
+            intensity = np.sum(mask) / mask.size  # 计算该层的强度
+            all_intensity.append(intensity)
+        
+        # 动态计算 z 范围
+        z_min = min(all_intensity)  # 最小强度
+        z_max = max(all_intensity)  # 最大强度
+        z_range = (z_min, z_max)
+
+    z_min, z_max = z_range  # 获取 z 范围
+    
+    # 计算每层粒子的强度并根据强度设置 z 值
+    for i, mask in enumerate(masks):
+        intensity = np.sum(mask) / mask.size  # 计算该层的强度
+        z_depth = (intensity - z_min) / (z_max - z_min)  # 标准化到 [0, 1] 范围，再映射到 z 范围
+
+        ys, xs = np.where(mask > intensity_threshold)  # 根据强度过滤出有效粒子
+        for y, x in zip(ys, xs):
+            z_pos = z_depth * (z_max - z_min) + z_min  # 映射到具体的 z 位置
+            points.append((x, y, z_pos, colors[i]))  # 根据层级设置颜色
+
+    return points
 
 def view_3d_model():
-    st.title("🧊 3D Layered Material Viewer")
-
-    if "class_masks" not in st.session_state:
-        st.error("⚠️ Please perform Multi-Otsu Segmentation first!")
-        return
-
-    masks = st.session_state.class_masks
-    if not masks or len(masks) < 5:
-        st.error("⚠️ Incomplete mask data.")
-        return
-
-    # User Inputs
-    display_style = st.selectbox("Choose display style", ["Dots", "Lines", "Mesh", "Filled", "Isolines"], index=0)
-    smoothing = st.slider("Adjust smoothing", 0.0, 1.0, 0.0, step=0.1)
-    z_scale = st.slider("Adjust Z-Scale", 0.1, 2.0, 1.0, step=0.1)
-    max_val = st.slider("Adjust Max Intensity", 0, 100, 60, step=1)
-    min_val = st.slider("Adjust Min Intensity", 0, 100, 0, step=1)
-
-    points = []
-
-    # Color based on mask layers
+    # 假设这五张mask的生成
+    masks = [np.random.rand(100, 100) > 0.5 for _ in range(5)]  # 假设五张mask
     colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
+    
+    points = create_3d_layers_with_intensity(masks, colors)
 
-    # Layer offsets for z-axis
-    layer_offset = 0.1
-    for i, mask in enumerate(masks):
-        z_offset = i * layer_offset
-        ys, xs = np.where(mask > 0)
-        for y, x in zip(ys, xs):
-            points.append((x, y, z_offset, colors[i]))
-
-    # Convert points to numpy arrays for easier handling
+    # 提取点
     x, y, z, color = zip(*points)
 
-    # Plotting
+    # 3D 图形初始化
     fig = go.Figure()
 
     for i, c in enumerate(colors):
         layer_points = [(x_val, y_val, z_val) for x_val, y_val, z_val, col in zip(x, y, z, color) if col == c]
         if layer_points:
             x_layer, y_layer, z_layer = zip(*layer_points)
-            if display_style == "Dots":
-                mode = 'markers'
-            elif display_style == "Lines":
-                mode = 'lines'
-            elif display_style == "Mesh":
-                mode = 'mesh3d'
-            elif display_style == "Filled":
-                mode = 'markers'
-            elif display_style == "Isolines":
-                mode = 'contour'
-
             fig.add_trace(go.Scatter3d(
                 x=x_layer,
                 y=y_layer,
                 z=z_layer,
-                mode=mode,
-                marker=dict(size=2, color=c, opacity=0.7),
+                mode='markers',
+                marker=dict(size=1, color=c, opacity=0.7),  # 设置点的大小为1
                 name=f"Layer {i+1}"
             ))
 
@@ -582,28 +577,16 @@ def view_3d_model():
             xaxis_title='X',
             yaxis_title='Y',
             zaxis_title='Layer Depth',
-            camera=dict(eye=dict(x=1.5, y=1.5, z=1.5)),
-            zaxis=dict(range=[min(z), max(z)]),
+            camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
         ),
         margin=dict(l=0, r=0, b=0, t=40),
-        title="3D Visualization of 5-Layer Material Structure"
+        title="3D Visualization of Material Structure"
     )
 
-    # Smoothness Adjustment
-    fig.update_traces(marker=dict(smoothing=smoothing))
+    fig.show()
 
-    # Show the plot
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("""
-    🧬 This interactive 3D model shows **5 material layers** segmented from your SEM image.
-
-    Each layer is visually separated in 3D space for clarity.
-
-    Rotate, zoom, and explore internal structures layer-by-layer.
-    """)
-
-# You can test this updated version of the function with Streamlit
+# 调用显示函数
+view_3d_model()
 
 
 # In[3]:
