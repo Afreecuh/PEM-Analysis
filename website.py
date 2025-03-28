@@ -527,7 +527,6 @@ def view_3d_model():
         st.error("⚠️ Incomplete mask data.")
         return
 
-    # Remove debug info
     points = []
 
     # Define colors and opacity for each layer
@@ -536,17 +535,14 @@ def view_3d_model():
     # Layer offset to separate the layers in the z-direction for clarity
     layer_offset = 0.1  # Each layer will be offset in the z-direction by this value
 
-    # Collect all points for the 3D scatter plot
     for i, mask in enumerate(masks):
         z_offset = i * layer_offset  # Offset for the current layer in the z-direction
         ys, xs = np.where(mask > 0)  # Get the coordinates of the non-zero pixels (material points)
         for y, x in zip(ys, xs):
             points.append((x, y, z_offset, colors[i]))  # Add the point along with the color for the current layer
 
-    # Display the total number of points and render range
+    # Collect the points
     x, y, z, color = zip(*points)
-    total_voxels = len(x)
-    st.write(f"Total points to render: {total_voxels}")
 
     # Create a 3D scatter plot using Plotly
     fig = go.Figure()
@@ -561,11 +557,10 @@ def view_3d_model():
                 y=y_layer,
                 z=z_layer,
                 mode='markers',
-                marker=dict(size=2, color=c, opacity=0.7),  # Adjust the particle size and opacity for better visibility
+                marker=dict(size=1, color=c, opacity=0.7),  # Adjust particle size to be smaller
                 name=f"Layer {i+1}"
             ))
 
-    # Update the layout of the 3D plot
     fig.update_layout(
         scene=dict(
             xaxis_title='X',
@@ -579,12 +574,11 @@ def view_3d_model():
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # Add additional description
     st.markdown("""
     🧬 This interactive 3D model shows **5 material layers** segmented from your SEM image.
-    
+
     Each layer is visually separated in 3D space for clarity.
-    
+
     Rotate, zoom, and explore internal structures layer-by-layer.
     """)
 
