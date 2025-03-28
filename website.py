@@ -554,16 +554,13 @@ def view_3d_model():
     st.write(f"y range: {min(y)} - {max(y)}")
     st.write(f"z range: {min(z)} - {max(z)}")
 
-    # 更新 Volume 顯示，加入顏色區分並提高可視度
-    fig = go.Figure(data=go.Volume(
+    # 用 scatter3d 測試能否顯示3D點
+    fig = go.Figure(data=go.Scatter3d(
         x=x,
         y=y,
         z=z,
-        value=value,
-        opacity=0.6,  # 更高透明度來確保圖層清晰可見
-        surface_count=5,
-        colorscale='Jet',  # 增加顏色對比強度
-        colorbar=dict(title="Layer Index"),
+        mode='markers',
+        marker=dict(size=4, color=value, colorscale='Jet', opacity=0.8),
     ))
 
     fig.update_layout(
