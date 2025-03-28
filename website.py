@@ -513,6 +513,7 @@ def download_report_page():
 
 import plotly.graph_objects as go
 import numpy as np
+import streamlit as st
 
 def view_3d_model():
     st.title("🧊 3D Layered Material Viewer")
@@ -526,44 +527,53 @@ def view_3d_model():
         st.error("⚠️ Incomplete mask data.")
         return
 
-    # Remove debug info
+    # User Inputs
+    display_style = st.selectbox("Choose display style", ["Dots", "Lines", "Mesh", "Filled", "Isolines"], index=0)
+    smoothing = st.slider("Adjust smoothing", 0.0, 1.0, 0.0, step=0.1)
+    z_scale = st.slider("Adjust Z-Scale", 0.1, 2.0, 1.0, step=0.1)
+    max_val = st.slider("Adjust Max Intensity", 0, 100, 60, step=1)
+    min_val = st.slider("Adjust Min Intensity", 0, 100, 0, step=1)
+
     points = []
 
-    # 定義顏色和透明度
-    colors = [
-        'rgba(169, 169, 169, 0.7)',  # Porosity (Holes, Cracks) -> 灰色
-        'rgba(139, 69, 19, 0.7)',  # Pollutants, Sediments -> 棕色
-        'rgba(0, 128, 0, 0.7)',  # Matrix (Base Material) -> 綠色
-        'rgba(255, 215, 0, 0.7)',  # Metallic Particles -> 金色
-        'rgba(255, 0, 0, 0.7)'  # High-Reflectivity Contaminants -> 紅色
-    ]
+    # Color based on mask layers
+    colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
 
-    # 分層設定
-    layer_offset = 0.1  # 每層的 z 方向偏移量
+    # Layer offsets for z-axis
+    layer_offset = 0.1
     for i, mask in enumerate(masks):
-        z_offset = i * layer_offset  # 每層拉高 0.1
-        ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
+        z_offset = i * layer_offset
+        ys, xs = np.where(mask > 0)
         for y, x in zip(ys, xs):
-            points.append((x, y, z_offset, colors[i]))  # 顏色根據層次設置
+            points.append((x, y, z_offset, colors[i]))
 
-    # 顯示點數和範圍
+    # Convert points to numpy arrays for easier handling
     x, y, z, color = zip(*points)
-    total_voxels = len(x)
-    st.write(f"Total points to render: {total_voxels}")
 
-    # 使用 go.Scatter3d 顯示每層顏色，增加層次感
+    # Plotting
     fig = go.Figure()
 
     for i, c in enumerate(colors):
         layer_points = [(x_val, y_val, z_val) for x_val, y_val, z_val, col in zip(x, y, z, color) if col == c]
         if layer_points:
             x_layer, y_layer, z_layer = zip(*layer_points)
+            if display_style == "Dots":
+                mode = 'markers'
+            elif display_style == "Lines":
+                mode = 'lines'
+            elif display_style == "Mesh":
+                mode = 'mesh3d'
+            elif display_style == "Filled":
+                mode = 'markers'
+            elif display_style == "Isolines":
+                mode = 'contour'
+
             fig.add_trace(go.Scatter3d(
                 x=x_layer,
                 y=y_layer,
                 z=z_layer,
-                mode='markers',
-                marker=dict(size=2, color=c, opacity=0.7),  # 調整粒子大小和透明度
+                mode=mode,
+                marker=dict(size=2, color=c, opacity=0.7),
                 name=f"Layer {i+1}"
             ))
 
@@ -572,12 +582,17 @@ def view_3d_model():
             xaxis_title='X',
             yaxis_title='Y',
             zaxis_title='Layer Depth',
-            camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
+            camera=dict(eye=dict(x=1.5, y=1.5, z=1.5)),
+            zaxis=dict(range=[min(z), max(z)]),
         ),
         margin=dict(l=0, r=0, b=0, t=40),
         title="3D Visualization of 5-Layer Material Structure"
     )
 
+    # Smoothness Adjustment
+    fig.update_traces(marker=dict(smoothing=smoothing))
+
+    # Show the plot
     st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("""
@@ -587,6 +602,8 @@ def view_3d_model():
 
     Rotate, zoom, and explore internal structures layer-by-layer.
     """)
+
+# You can test this updated version of the function with Streamlit
 
 
 # In[3]:
