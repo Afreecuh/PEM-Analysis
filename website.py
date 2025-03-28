@@ -534,7 +534,7 @@ def view_3d_model():
         st.write(f"Layer {i}: Non-zero pixels = {nonzero}")
 
         z_offset = i * 20  # 每層拉高 20 單位
-        ys, xs = np.where(mask > 0)
+        ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
         for y, x in zip(ys, xs):
             points.append((x, y, z_offset, i + 1))  # i+1 為 value/color index
         total_voxels += len(xs)
@@ -547,14 +547,19 @@ def view_3d_model():
 
     x, y, z, value = zip(*points)
 
+    # Debug values and coordinates
+    st.write(f"First few points: {points[:5]}")
+    st.write(f"Total points to render: {len(points)}")
+
+    # 更新 Volume 顯示，加入顏色區分並提高可視度
     fig = go.Figure(data=go.Volume(
         x=x,
         y=y,
         z=z,
         value=value,
-        opacity=0.6,  # 更高透明度
+        opacity=0.6,  # 更高透明度來確保圖層清晰可見
         surface_count=5,
-        colorscale='Jet',  # 顏色對比強烈
+        colorscale='Jet',  # 增加顏色對比強度
         colorbar=dict(title="Layer Index"),
     ))
 
