@@ -668,7 +668,7 @@ def main():
             if st.button("⬅️ Previous", use_container_width=True):
                 st.session_state.page -= 1
     with col2:
-        if st.session_state.page < 5:
+        if st.session_state.page < 6:
             if st.button("Next ➡️", use_container_width=True):
                 st.session_state.page += 1
 
