@@ -513,6 +513,7 @@ def download_report_page():
 
 import plotly.graph_objects as go
 import numpy as np
+import streamlit as st
 
 def view_3d_model():
     st.title("🧊 3D Layered Material Viewer")
@@ -526,28 +527,26 @@ def view_3d_model():
         st.error("⚠️ Incomplete mask data.")
         return
 
-    points = []
-    # 定義顏色和透明度
+    # 定義顏色
     colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
 
+    # 存放所有粒子的x, y, z, 顏色，並且正規化z的值
+    points = []
+
     for i, mask in enumerate(masks):
-        # 計算每層的強度
-        intensity = np.sum(mask)  # 每層的強度是所有非零像素的總和
-
-        # 將每層的強度映射到 0 到 1 之間的深度範圍
-        # 假設強度最大為最大強度，這會將每層的強度正規化到 [0, 1] 範圍內
-        depth = intensity / np.max([np.sum(m) for m in masks])  # 正規化
-
         ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
+        max_intensity = np.max(mask)  # 獲取該層的最大強度
         for y, x in zip(ys, xs):
-            points.append((x, y, depth, colors[i]))  # 根據強度分配 z 值
+            intensity = mask[y, x]  # 獲取當前粒子的強度
+            z = intensity / max_intensity  # 強度正規化到0~1範圍
+            points.append((x, y, z, colors[i]))  # 將x, y, z和顏色加入points
 
-    # 顯示點數和範圍
+    # 顯示點數
     x, y, z, color = zip(*points)
     total_voxels = len(x)
     st.write(f"Total points to render: {total_voxels}")
 
-    # 使用 go.Scatter3d 顯示每層顏色，並設定粒子大小為 1，保持粒子透明度
+    # 使用 go.Scatter3d 顯示每層顏色，並且顯示在同一個範圍
     fig = go.Figure()
 
     for i, c in enumerate(colors):
@@ -559,7 +558,7 @@ def view_3d_model():
                 y=y_layer,
                 z=z_layer,
                 mode='markers',
-                marker=dict(size=1, color=c, opacity=0.7),  # 粒子大小為 1，透明度為 0.7
+                marker=dict(size=1, color=c, opacity=0.7),  # 設定粒子大小為1
                 name=f"Layer {i+1}"
             ))
 
@@ -583,6 +582,9 @@ def view_3d_model():
 
     Rotate, zoom, and explore internal structures layer-by-layer.
     """)
+
+# 呼叫該函數展示3D視圖
+view_3d_model()
 
 
 # In[3]:
