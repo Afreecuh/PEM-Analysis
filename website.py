@@ -513,7 +513,6 @@ def download_report_page():
 
 import plotly.graph_objects as go
 import numpy as np
-import streamlit as st
 
 def view_3d_model():
     st.title("🧊 3D Layered Material Viewer")
@@ -527,26 +526,26 @@ def view_3d_model():
         st.error("⚠️ Incomplete mask data.")
         return
 
-    # 定義顏色
+    points = []
+    # 設定每層的顏色
     colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
 
-    # 存放所有粒子的x, y, z, 顏色，並且正規化z的值
-    points = []
-
+    # 正規化強度並映射到z範圍 [0, 1]
     for i, mask in enumerate(masks):
         ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
-        max_intensity = np.max(mask)  # 獲取該層的最大強度
-        for y, x in zip(ys, xs):
-            intensity = mask[y, x]  # 獲取當前粒子的強度
-            z = intensity / max_intensity  # 強度正規化到0~1範圍
-            points.append((x, y, z, colors[i]))  # 將x, y, z和顏色加入points
+        intensities = mask[ys, xs]  # 取得這些點的強度
+        norm_intensities = (intensities - intensities.min()) / (intensities.max() - intensities.min())  # 正規化到[0, 1]
+        
+        # 使用正規化的強度來設定z深度
+        for y, x, norm_intensity in zip(ys, xs, norm_intensities):
+            points.append((x, y, norm_intensity, colors[i]))  # 顏色根據層次設置
 
-    # 顯示點數
+    # 顯示點數和範圍
     x, y, z, color = zip(*points)
     total_voxels = len(x)
     st.write(f"Total points to render: {total_voxels}")
 
-    # 使用 go.Scatter3d 顯示每層顏色，並且顯示在同一個範圍
+    # 使用 go.Scatter3d 顯示每層顏色
     fig = go.Figure()
 
     for i, c in enumerate(colors):
@@ -558,7 +557,7 @@ def view_3d_model():
                 y=y_layer,
                 z=z_layer,
                 mode='markers',
-                marker=dict(size=1, color=c, opacity=0.7),  # 設定粒子大小為1
+                marker=dict(size=1, color=c, opacity=0.7),  # 固定粒子大小為1，透明度為0.7
                 name=f"Layer {i+1}"
             ))
 
@@ -582,9 +581,6 @@ def view_3d_model():
 
     Rotate, zoom, and explore internal structures layer-by-layer.
     """)
-
-# 呼叫該函數展示3D視圖
-view_3d_model()
 
 
 # In[3]:
