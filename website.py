@@ -521,33 +521,35 @@ import plotly.graph_objects as go
 def view_3d_model():
     st.title("🧊 3D Layered Material Viewer")
 
-    # Ensure masks are ready
+    # Ensure masks are available
     if "class_masks" not in st.session_state:
         st.error("⚠️ Please perform Multi-Otsu Segmentation first!")
         return
 
-    masks = st.session_state.class_masks  # list of 2D arrays (5 layers)
+    masks = st.session_state.class_masks  # list of 2D np.uint8 masks, len = 5
 
-    # Step 1: build 3D volume data with values 1~5 (layer index)
-    volume_shape = (len(masks),) + masks[0].shape  # (5, H, W)
-    volume_data = np.zeros(volume_shape, dtype=np.uint8)
-
+    # Convert each mask to binary and assign unique layer value (1~5)
+    binary_layers = []
     for i, mask in enumerate(masks):
-        binary_mask = (mask > 0).astype(np.uint8)
-        volume_data[i] = binary_mask * (i + 1)  # layer 1~5
+        layer_binary = (mask > 0).astype(np.uint8) * (i + 1)  # values: 1, 2, 3, 4, 5
+        binary_layers.append(layer_binary)
 
-    # Step 2: Prepare 3D grid
+    # Stack to create volume shape (Z, Y, X)
+    volume_data = np.stack(binary_layers, axis=0)
+
+    # Get coordinates and values of non-zero voxels
     z, y, x = volume_data.nonzero()
     values = volume_data[z, y, x]
 
+    # Plot with plotly
     fig = go.Figure(data=go.Volume(
         x=x,
         y=y,
         z=z,
         value=values,
-        opacity=0.2,
+        opacity=0.15,
         surface_count=5,
-        colorscale="Jet",  # or try 'Viridis', 'Hot', etc.
+        colorscale='Jet',
         colorbar=dict(title="Layer Index"),
     ))
 
@@ -563,6 +565,7 @@ def view_3d_model():
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
     st.markdown("""
     🧬 This interactive 3D model shows **5 material layers** segmented from your SEM image.
     
@@ -661,15 +664,15 @@ def main():
     elif st.session_state.page == 5:
         download_report_page()
 
-    # Navigation buttons (two columns only)
+    # Navigation buttons (no container width)
     col1, col2 = st.columns([1, 5])
     with col1:
         if st.session_state.page > 1:
-            if st.button("⬅️ Previous", use_container_width=True):
+            if st.button("⬅️ Previous"):
                 st.session_state.page -= 1
     with col2:
         if st.session_state.page < 6:
-            if st.button("Next ➡️", use_container_width=True):
+            if st.button("Next ➡️"):
                 st.session_state.page += 1
 
 if __name__ == "__main__":
