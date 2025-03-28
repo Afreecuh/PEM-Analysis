@@ -512,50 +512,45 @@ def download_report_page():
 
 
 import numpy as np
-import plotly.graph_objects as go
+import cv2
 import streamlit as st
+import plotly.graph_objects as go
+from skimage.measure import label
 
-# Debug: 檢查 z 軸強度
-def check_z_distribution(mask, layer_name):
-    ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
-    pixel_values = mask[ys, xs]  # 根據 mask 擷取像素強度
-    
-    # 計算強度分佈的範圍
-    pixel_min = np.min(pixel_values)
-    pixel_max = np.max(pixel_values)
-    
-    # 如果最大值等於最小值，則顯示警告
-    if pixel_max == pixel_min:
-        st.warning(f"Layer '{layer_name}': All pixels have the same value: {pixel_min}")
-    
-    # 顯示強度範圍
-    st.write(f"Layer '{layer_name}' Intensity Range: {pixel_min} to {pixel_max}")
+# Debug: 检查原图强度范围
+def check_image_intensity(image):
+    image_np = np.array(image.convert("L"))
+    pixel_min = np.min(image_np)
+    pixel_max = np.max(image_np)
+    st.write(f"Original Image Intensity Range: {pixel_min} to {pixel_max}")
+    return image_np
 
-# 測試 mask 是否正常運行
-def test_masks():
-    for i, mask in enumerate(st.session_state.class_masks):
-        layer_name = f"Layer {i+1}"
-        check_z_distribution(mask, layer_name)
+# Debug: 检查分割后的图像（segmented_image）
+def check_segmented_image(image_blur):
+    thresholds = threshold_multiotsu(image_blur, classes=5)
+    segmented_image = np.digitize(image_blur, bins=thresholds)
+    st.write(f"Segmented Image Min: {np.min(segmented_image)} Max: {np.max(segmented_image)}")
+    return segmented_image
 
-# 繪製 z 軸強度分佈圖
-def plot_z_distribution(mask, layer_name):
-    ys, xs = np.where(mask > 0)
+# Debug: 检查每一层 mask 的强度范围
+def check_mask_intensity(mask):
+    ys, xs = np.where(mask > 0)  # 获取所有非零像素的位置
     pixel_values = mask[ys, xs]
     pixel_min = np.min(pixel_values)
     pixel_max = np.max(pixel_values)
-    
-    normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)
-    
-    st.write(f"Plotting Z Distribution for {layer_name}")
-    plt.hist(normed_depth, bins=50, range=(0, 1))
-    plt.title(f"Z Axis Distribution for {layer_name}")
-    plt.xlabel("Normalized Z Depth")
-    plt.ylabel("Frequency")
-    plt.show()
+    st.write(f"Layer {i+1} - Pixel Min: {pixel_min}, Pixel Max: {pixel_max}")
+    return pixel_values
 
-# 繪製第一層的分佈圖
-# plot_z_distribution(st.session_state.class_masks[0])
+# Debug: 检查每一层的强度是否正常
+def check_z_distribution(masks):
+    for i, mask in enumerate(masks):
+        pixel_values = check_mask_intensity(mask)  # 取出每一层的像素强度
+        if np.min(pixel_values) == np.max(pixel_values):
+            st.write(f"Layer {i+1}: All pixels have the same value {np.min(pixel_values)}")
+        else:
+            st.write(f"Layer {i+1} Intensity Range: {np.min(pixel_values)} to {np.max(pixel_values)}")
 
+# 3D可视化函数
 def view_3d_model():
     st.title("🧊 3D Layered Material Viewer")
 
@@ -570,39 +565,34 @@ def view_3d_model():
 
     points = []
 
-    # Debug: 檢查每層的像素強度
-    test_masks()
-
-    # 定義顏色和透明度
+    # 定义颜色和透明度
     colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
 
-    # 根據原圖的強度來設置 z 軸的位置
+    # 根据原图的强度来设置 z 轴的位置
     for i, mask in enumerate(masks):
-        ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
+        ys, xs = np.where(mask > 0)  # 获取所有非零像素的位置
 
-        # 讀取原圖的強度並進行歸一化處理
-        pixel_values = mask[ys, xs]  # 根據 mask 擷取像素強度
+        # 读取原图的强度并进行归一化处理
+        pixel_values = mask[ys, xs]  # 根据 mask 获取像素强度
         pixel_min = np.min(pixel_values)
         pixel_max = np.max(pixel_values)
         
-        # 防止除以零，將零強度設定為最小非零強度的值
+        # 防止除以零，设置零强度为最小非零强度
         if pixel_max > pixel_min:
-            normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)  # 強度歸一化
+            normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)  # 强度归一化
         else:
-            normed_depth = np.zeros_like(pixel_values)  # 如果最大值等於最小值，則設定為零
+            normed_depth = np.zeros_like(pixel_values)  # 如果最大值等于最小值，设置为零
 
-        # 根據歸一化後的強度設置 z 軸深度，這樣每一層的粒子都會有不同的深度
+        # 根据归一化后的强度设置 z 轴深度
         for y, x, depth in zip(ys, xs, normed_depth):
-            # 将深度从 [0, 1] 范围调整到 [-0.5, 0.5] 以避免超出正常范围
-            depth = (depth * 2) - 1  # 扩展到[-1, 1]
-            points.append((x, y, depth, colors[i]))  # 顏色根據層次設置
+            points.append((x, y, depth, colors[i]))  # 颜色根据层次设置
 
-    # 顯示點數和範圍
+    # 显示点数和范围
     x, y, z, color = zip(*points)
     total_voxels = len(x)
     st.write(f"Total points to render: {total_voxels}")
 
-    # 使用 go.Scatter3d 顯示每層顏色，增加層次感
+    # 使用 go.Scatter3d 显示每层颜色，增加层次感
     fig = go.Figure()
 
     for i, c in enumerate(colors):
@@ -614,7 +604,7 @@ def view_3d_model():
                 y=y_layer,
                 z=z_layer,
                 mode='markers',
-                marker=dict(size=1, color=c, opacity=0.7),  # 固定粒子大小為1，並保持透明度
+                marker=dict(size=1, color=c, opacity=0.7),  # 固定粒子大小为1，并保持透明度
                 name=f"Layer {i+1}"
             ))
 
@@ -638,6 +628,32 @@ def view_3d_model():
     
     Rotate, zoom, and explore internal structures layer-by-layer.
     """)
+
+# 调用调试和可视化函数
+def debug_process():
+    if st.session_state.image is None:
+        st.error("⚠️ Please upload an image first!")
+        return
+    
+    # Step 1: 检查原始图像的强度
+    image_np = check_image_intensity(st.session_state.image)
+    
+    # Step 2: 检查图像的分割
+    image_eq = cv2.equalizeHist(image_np)  # 对图像进行直方图均衡化
+    image_blur = cv2.GaussianBlur(image_eq, (5, 5), 0)  # 高斯模糊
+    segmented_image = check_segmented_image(image_blur)
+
+    # Step 3: 获取分割后的每一层
+    st.session_state.class_masks = [(segmented_image == i).astype(np.uint8) * 255 for i in range(5)]
+    
+    # Step 4: 检查每一层的强度分布
+    check_z_distribution(st.session_state.class_masks)
+
+    # Step 5: 绘制 3D 模型
+    view_3d_model()
+
+# 调用调试和可视化过程
+debug_process()
 
 
 # In[3]:
