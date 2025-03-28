@@ -526,8 +526,9 @@ def view_3d_model():
         st.error("⚠️ Incomplete mask data.")
         return
 
-    st.subheader("🧪 Mask Debug Info")
-    total_voxels = 0
+    # Remove debug info
+    # st.subheader("🧪 Mask Debug Info")
+    # total_voxels = 0
     points = []
 
     # 定義顏色和透明度
@@ -536,26 +537,15 @@ def view_3d_model():
     # 分層設定
     layer_offset = 0.1  # 每層的 z 方向偏移量
     for i, mask in enumerate(masks):
-        nonzero = np.count_nonzero(mask)
-        st.write(f"Layer {i}: Non-zero pixels = {nonzero}")
-
         z_offset = i * layer_offset  # 每層拉高 0.1
         ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
         for y, x in zip(ys, xs):
             points.append((x, y, z_offset, colors[i]))  # 顏色根據層次設置
-        total_voxels += len(xs)
 
-    st.write(f"Total rendered voxels: {total_voxels}")
-
-    if total_voxels == 0:
-        st.warning("⚠️ No voxels were selected for rendering!")
-        return
-
+    # 顯示點數和範圍
     x, y, z, color = zip(*points)
-
-    # 顯示調試信息
-    st.write(f"First few points: {points[:5]}")
-    st.write(f"Total points to render: {len(points)}")
+    total_voxels = len(x)
+    st.write(f"Total points to render: {total_voxels}")
 
     # 使用 go.Scatter3d 顯示每層顏色，增加層次感
     fig = go.Figure()
@@ -569,7 +559,7 @@ def view_3d_model():
                 y=y_layer,
                 z=z_layer,
                 mode='markers',
-                marker=dict(size=4, color=c, opacity=0.8),
+                marker=dict(size=2, color=c, opacity=0.7),  # 調整粒子大小和透明度
                 name=f"Layer {i+1}"
             ))
 
