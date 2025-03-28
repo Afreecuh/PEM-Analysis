@@ -550,6 +550,9 @@ def view_3d_model():
     # Debug values and coordinates
     st.write(f"First few points: {points[:5]}")
     st.write(f"Total points to render: {len(points)}")
+    st.write(f"x range: {min(x)} - {max(x)}")
+    st.write(f"y range: {min(y)} - {max(y)}")
+    st.write(f"z range: {min(z)} - {max(z)}")
 
     # 更新 Volume 顯示，加入顏色區分並提高可視度
     fig = go.Figure(data=go.Volume(
