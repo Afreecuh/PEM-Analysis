@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 # In[1]:
 
 
-# **初始化 Session State**
+# **Initialize Session State**
 if "scale_coords" not in st.session_state:
     st.session_state.scale_coords = []
 if "scale_pixels" not in st.session_state:
@@ -32,55 +32,55 @@ if "pixel_to_um" not in st.session_state:
 if "image" not in st.session_state:
     st.session_state.image = None
 
-# **用戶點擊時更新標註點**
+# **Update annotation points when user clicks**
 def update_coords(click_x, click_y):
-    """記錄用戶點擊的座標，最多允許兩個點"""
+    """Record coordinates of user clicks, maximum of two points"""
     if len(st.session_state.scale_coords) < 2:
         st.session_state.scale_coords.append((click_x, click_y))
-        st.rerun()  # 讓 UI 重新更新，顯示紅點
+        st.rerun()  # Refresh UI to show red dot
     else:
-        st.warning("⚠️ 已標註兩個點，請輸入比例尺長度！")
+        st.warning("⚠️ Two points already marked. Please input the actual scale length!")
 
-# **顯示圖片並讓用戶標註比例尺**
+# **Display image and allow user to annotate scale**
 def plot_image_with_annotations():
-    """顯示圖片，並讓用戶點擊標註比例尺範圍"""
+    """Display image and allow user to mark scale range"""
     image = st.session_state.image
     fig = px.imshow(np.array(image))
 
-    # **添加標註點**
+    # **Add annotation points**
     for coord in st.session_state.scale_coords:
         fig.add_trace(go.Scatter(
             x=[coord[0]],
             y=[coord[1]],
             mode="markers",
             marker=dict(color="red", size=10),
-            name="標註點"
+            name="Annotation Point"
         ))
 
     return fig
 
-# **處理比例尺標註與計算 µm/px**
+# **Handle scale annotation and calculate µm/px**
 def handle_scale_annotation():
     if len(st.session_state.scale_coords) == 2:
         x1, y1 = st.session_state.scale_coords[0]
         x2, y2 = st.session_state.scale_coords[1]
-        scale_pixels = abs(x2 - x1)  # **只計算 X 方向的距離**
+        scale_pixels = abs(x2 - x1)  # **Only calculate X-direction distance**
         st.session_state.scale_pixels = scale_pixels
 
-        st.success(f"✅ 你已選取比例尺範圍: {scale_pixels:.2f} px")
+        st.success(f"✅ Selected scale range: {scale_pixels:.2f} px")
         
-        # **輸入比例尺的實際長度**
-        scale_length_input = st.text_input("請輸入比例尺的實際長度 (µm):", "10")
+        # **Input actual scale length**
+        scale_length_input = st.text_input("Enter actual scale length (µm):", "10")
 
-        if st.button("計算 µm/px"):
+        if st.button("Calculate µm/px"):
             try:
                 scale_length_um = float(scale_length_input)
                 st.session_state.scale_length_um = scale_length_um
                 pixel_to_um = scale_length_um / scale_pixels
                 st.session_state.pixel_to_um = pixel_to_um
-                st.success(f"📏 計算結果: {scale_length_um:.2f} µm（{pixel_to_um:.4f} µm/px）")
+                st.success(f"📏 Result: {scale_length_um:.2f} µm ({pixel_to_um:.4f} µm/px)")
             except ValueError:
-                st.error("⚠️ 輸入格式錯誤，請輸入數字")
+                st.error("⚠️ Invalid input. Please enter a number.")
 
 
 # In[ ]:
@@ -92,40 +92,38 @@ def otsu_segmentation():
     inject_ga()
     st.title("Multi-Otsu Thresholding & SEM Analysis")
     
-    # **固定分割區間數為 5**
+    # **Fixed number of segmentation classes = 5**
     num_classes = 5  
     
     if st.session_state.image is None or st.session_state.pixel_to_um is None:
-        st.error("⚠️ 請先上傳圖片並設定比例尺！")
+        st.error("⚠️ Please upload an image and set the scale first!")
         return
 
     image_np = np.array(st.session_state.image.convert("L"))
     pixel_to_um = st.session_state.pixel_to_um
 
-    # **應用 Multi-Otsu 門檻分割**
+    # **Apply Multi-Otsu threshold segmentation**
     thresholds = threshold_multiotsu(image_np, classes=num_classes)
     segmented_image = np.digitize(image_np, bins=thresholds)
 
-    # **確保 class_masks 只計算一次**
+    # **Compute class masks once**
     if "class_masks" not in st.session_state:
         st.session_state.class_masks = [(segmented_image == i).astype(np.uint8) * 255 for i in range(num_classes)]
 
-    # **確保 Layer 選擇不會影響頁面狀態**
+    # **Initialize selected layer index**
     if "selected_layer_index" not in st.session_state:
-        st.session_state.selected_layer_index = 0  # **預設選擇第一個 Layer**
+        st.session_state.selected_layer_index = 0
 
-    # **產生分類遮罩並計算統計數據**
-    labeled_masks = [label(mask) for mask in st.session_state.class_masks]  # 標記區域
+    # **Generate masks and compute stats**
+    labeled_masks = [label(mask) for mask in st.session_state.class_masks]
     class_properties = [regionprops(labeled_mask) for labeled_mask in labeled_masks]
     
-    # **計算每個類別的區域統計資訊**
     num_regions = [len(props) for props in class_properties]
     avg_area_per_region = [
         np.mean([prop.area for prop in props]) if len(props) > 0 else 0 
         for props in class_properties
     ]
     
-    # **計算面積分析**
     pixel_areas = [(segmented_image == i).sum() for i in range(num_classes)]
     total_area = sum(pixel_areas)
     real_physical_sizes = [area * (pixel_to_um ** 2) for area in pixel_areas]
@@ -148,61 +146,54 @@ def otsu_segmentation():
         "Average Area per Region (px)": avg_area_per_region
     })
 
-    # **顯示表格**
     st.dataframe(df_analysis)
 
-    # **可視化 - 可點擊的 bar chart**
+    # **Bar chart**
     fig_bar = px.bar(df_analysis, x="Layer", y="Physical Area (µm²)", title="Physical Area of Each Layer")
     fig_bar.update_traces(customdata=layer_labels, hoverinfo="x+y")
     st.plotly_chart(fig_bar, use_container_width=True)
     
-    # **顯示 Layer Visualization**
     st.write("### Layer Visualization")
 
-    # **使用 session_state 綁定 selectbox**
     selected_layer = st.selectbox(
-        "選擇要顯示的 Layer", 
+        "Select a Layer to Display", 
         layer_labels, 
         index=st.session_state.get("selected_layer_index", 0),
         key="layer_selection"
     )
 
-    # **更新 session_state，確保不影響頁面跳轉**
     if selected_layer:
         st.session_state.selected_layer_index = layer_labels.index(selected_layer)
 
-    # **顯示選定 Layer 的遮罩**
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.imshow(st.session_state.class_masks[st.session_state.selected_layer_index], cmap="gray")
     ax.set_title(f"{selected_layer} (Layer {st.session_state.selected_layer_index})")
     ax.axis("off")
     st.pyplot(fig)
     
-    # **可視化 - 圖表**
+    # **Pie chart**
     fig_pie = px.pie(df_analysis, names="Layer", values="Area Percentage (%)", title="Area Distribution Across Layers")
     st.plotly_chart(fig_pie, use_container_width=True)
 
-    # **計算額外指標**
+    # **Extra metrics**
     porosity_ratio = (pixel_areas[0] / total_area) * 100 if len(pixel_areas) > 0 else 0
     catalyst_areas = sum(pixel_areas[2:4]) if len(pixel_areas) > 3 else 0
     catalyst_percentage = (catalyst_areas / total_area) * 100 if total_area > 0 else 0
     agglomeration_ratio = (pixel_areas[3] / catalyst_areas) * 100 if len(pixel_areas) > 3 and catalyst_areas > 0 else 0
     oxidation_ratio = (pixel_areas[4] / total_area) * 100 if len(pixel_areas) > 4 else 0
 
-    st.write(f"📌 孔隙率: {porosity_ratio:.2f}%")
-    st.write(f"📌 催化劑覆蓋率: {catalyst_percentage:.2f}%")
-    st.write(f"📌 團聚比: {agglomeration_ratio:.2f}%")
-    st.write(f"📌 氧化/雜質覆蓋率: {oxidation_ratio:.2f}%")
+    st.write(f"📌 Porosity: {porosity_ratio:.2f}%")
+    st.write(f"📌 Catalyst Coverage: {catalyst_percentage:.2f}%")
+    st.write(f"📌 Agglomeration Ratio: {agglomeration_ratio:.2f}%")
+    st.write(f"📌 Oxidation/Impurity Coverage: {oxidation_ratio:.2f}%")
 
-    # **存入 session_state**
     st.session_state.analysis_df = df_analysis
     st.session_state.extra_metrics = {
-        "Porosity Ratio": (pixel_areas[0] / total_area) * 100 if total_area > 0 else 0,
-        "Catalyst Coverage": (sum(pixel_areas[2:4]) / total_area) * 100 if total_area > 0 else 0,
-        "Agglomeration Ratio": (pixel_areas[3] / sum(pixel_areas[2:4])) * 100 if sum(pixel_areas[2:4]) > 0 else 0,
-        "Oxidation/Impurity Coverage": (pixel_areas[4] / total_area) * 100 if total_area > 0 else 0,
+        "Porosity Ratio": porosity_ratio,
+        "Catalyst Coverage": catalyst_percentage,
+        "Agglomeration Ratio": agglomeration_ratio,
+        "Oxidation/Impurity Coverage": oxidation_ratio,
     }
-
 
 
 # In[ ]:
@@ -215,10 +206,10 @@ import plotly.express as px
 from skimage.filters import threshold_multiotsu
 from PIL import Image
 
-# **統一 Multi-Otsu 分割區間數為 4**
+# **Set number of Multi-Otsu classes to 4**
 NUM_CLASSES = 4  
 
-# **計算形狀特徵**
+# **Calculate shape features**
 def calculate_shape_features(contour):
     area = cv2.contourArea(contour)
     perimeter = cv2.arcLength(contour, True)
@@ -230,7 +221,7 @@ def calculate_shape_features(contour):
     solidity = area / hull_area if hull_area > 0 else 0
     return circularity, aspect_ratio, solidity
 
-# **分類顆粒形狀**
+# **Classify particle shape**
 def classify_shape(circularity, aspect_ratio, solidity):
     if circularity > 0.8 and 0.9 < aspect_ratio < 1.1:
         return "Circle"
@@ -243,58 +234,49 @@ def classify_shape(circularity, aspect_ratio, solidity):
     else:
         return "Polygon"
 
-# **分析顆粒**
+# **Analyze particles**
 def analyze_particles(image):
     img_gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
     img_eq = cv2.equalizeHist(img_gray)
-    img_blur = cv2.GaussianBlur(img_eq, (5, 5), 0)  # **還原為 GaussianBlur**
+    img_blur = cv2.GaussianBlur(img_eq, (5, 5), 0)
 
-    # **Multi-Otsu 分割**
     thresholds = threshold_multiotsu(img_blur, classes=NUM_CLASSES)
     segmented = np.digitize(img_blur, bins=thresholds)
 
-    # **產生二值化遮罩**
     binary = (segmented == 2).astype(np.uint8) * 255
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     circularities = []
     shape_labels = []
 
-    # **生成輪廓標記影像**
     img_with_contours = cv2.cvtColor(img_gray, cv2.COLOR_GRAY2BGR)
 
     for contour in contours:
         area = cv2.contourArea(contour)
-        if area > 50:  # **過濾掉小面積顆粒**
+        if area > 50:  # **Filter small particles**
             circularity, aspect_ratio, solidity = calculate_shape_features(contour)
             shape = classify_shape(circularity, aspect_ratio, solidity)
             circularities.append(circularity)
             shape_labels.append(shape)
-
-            # **在影像上標註顆粒輪廓**
             cv2.drawContours(img_with_contours, [contour], -1, (0, 255, 255), 2)
 
     return circularities, shape_labels, binary, img_with_contours
 
-# **Streamlit 介面**
+# **Streamlit interface**
 def analyze_particles_page():
-    st.title("🔬 SEM 顆粒形狀分析")
+    st.title("🔬 SEM Particle Shape Analysis")
 
     if st.session_state.image is None:
-        st.error("⚠️ 請先上傳圖片並設定比例尺！")
+        st.error("⚠️ Please upload an image and set the scale first!")
         return
 
     image = st.session_state.image
-
-    # **執行分析**
     circularities, shape_labels, binary_image, img_with_contours = analyze_particles(image)
 
-    # **存入 session_state**
     shape_counts = {shape: shape_labels.count(shape) for shape in set(shape_labels)}
     st.session_state.shape_analysis = shape_counts
-    st.session_state.circularity_data = circularities  # ✅ 確保存 Circularity Data
+    st.session_state.circularity_data = circularities
 
-    # **顯示 Circularity Distribution**
     st.subheader("📊 Circularity Distribution")
     if circularities:
         fig_circularity = px.histogram(
@@ -310,9 +292,8 @@ def analyze_particles_page():
             st.image(binary_image, caption="Binary Segmentation (Used for Circularity Calculation)", use_column_width=True, clamp=True)
 
     else:
-        st.warning("⚠️ 沒有偵測到顆粒")
+        st.warning("⚠️ No particles detected")
 
-    # **顯示 Shape Analysis**
     st.subheader("📊 Shape Analysis")
     if shape_labels:
         fig_shape = px.histogram(
@@ -327,8 +308,7 @@ def analyze_particles_page():
         with st.expander("🔍 Show Shape Contour Image"):
             st.image(img_with_contours, caption="Segmented Image with Contours", use_column_width=True)
     else:
-        st.warning("⚠️ 沒有偵測到顆粒")
-
+        st.warning("⚠️ No particles detected")
 
 
 # User Guide
@@ -337,7 +317,7 @@ def analyze_particles_page():
 
 
 def show_user_guide():
-    """顯示 User Guide 內容，根據目前頁面選擇對應說明"""
+    """Display User Guide based on current page"""
     guide_content = {
         1: """
         ### **Page 1: Upload Image & Scale Annotation**
@@ -398,14 +378,14 @@ def generate_pdf():
     pdf = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
-    # **標題**
+    # **Title**
     pdf.setFont("Helvetica-Bold", 18)
     pdf.drawCentredString(width / 2, 770, "SEM Image Analysis Report")
     pdf.setFont("Helvetica", 12)
     pdf.drawCentredString(width / 2, 750, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     pdf.line(50, 740, 550, 740)
 
-    # **插入 SEM 圖像**
+    # **Insert SEM Image**
     if st.session_state.image:
         img_buffer = io.BytesIO()
         st.session_state.image.save(img_buffer, format="PNG")
@@ -480,7 +460,7 @@ def generate_pdf():
     pdf.line(50, y_offset - 10, 550, y_offset - 10)
     y_offset -= 30
 
-    # **Circularity 分析**
+    # **Circularity Analysis**
     pdf.setFont("Helvetica-Bold", 14)
     pdf.drawString(50, y_offset, "Circularity Distribution")
     pdf.setFont("Helvetica", 12)
@@ -507,10 +487,10 @@ def download_report_page():
     st.title("📄 **Download Report**")
     st.write("Click the button below to generate and download your SEM analysis report as a PDF.")
 
-    # **增加區塊外觀**
+    # **Visual separator**
     st.markdown("---")
 
-    # **居中顯示下載按鈕**
+    # **Center-aligned download button**
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("📥 Generate PDF Report", use_container_width=True):
@@ -526,7 +506,7 @@ def download_report_page():
 
     st.markdown("---")
 
-    # **頁面導航按鈕**
+    # **Navigation button**
     col_prev, _, _ = st.columns([1, 3, 1])
     with col_prev:
         if st.button("⬅️ Previous", use_container_width=True):
@@ -536,7 +516,7 @@ def download_report_page():
 # In[3]:
 
 
-# **Google Analytics 追蹤碼**
+# **Google Analytics Tracking Code**
 def inject_ga():
     """Inject Google Analytics tracking code into the Streamlit app."""
     GA_TRACKING_ID = "G-4QWR3D46SD"
@@ -551,7 +531,7 @@ def inject_ga():
     """
     components.html(ga_code, height=0)
 
-# **初始化 Session State**
+# **Initialize Session State**
 if "page" not in st.session_state:
     st.session_state.page = 1
 if "scale_coords" not in st.session_state:
@@ -571,54 +551,46 @@ def next_page():
 def prev_page():
     st.session_state.page -= 1
 
-# **頁面 1：上傳圖片 + 標註比例尺**
+# **Page 1: Upload Image & Annotate Scale**
 def upload_and_mark_scale():
-    inject_ga()  # **確保 Google Analytics 被執行**
+    inject_ga()
     
-    st.image("cover_image.jpg", use_container_width=True)  # **確保封面圖片仍然顯示**
-    st.title("PEM Analysis")  # **保留唯一標題**
+    st.image("cover_image.jpg", use_container_width=True)
+    st.title("PEM Analysis")
 
-
-    # **單一上傳圖片區塊**
     uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"], key="image_upload")
 
     if uploaded_file:
-        # **儲存圖片**
-        st.session_state.image = Image.open(uploaded_file)  # 存入 Session State
+        st.session_state.image = Image.open(uploaded_file)
         st.success("✅ Image uploaded successfully! Please mark the scale.")
 
-        # **手動輸入點擊座標**
-        st.write("請手動輸入兩個點的座標（X 和 Y）：")
+        st.write("Manually input two coordinate points (X and Y):")
         col1, col2 = st.columns(2)
         with col1:
-            x1 = st.number_input("第一點 X 座標", min_value=0, step=1, key="x1_input")
-            x2 = st.number_input("第二點 X 座標", min_value=0, step=1, key="x2_input")
+            x1 = st.number_input("First point X", min_value=0, step=1, key="x1_input")
+            x2 = st.number_input("Second point X", min_value=0, step=1, key="x2_input")
         with col2:
-            y1 = st.number_input("第一點 Y 座標", min_value=0, step=1, key="y1_input")
-            y2 = st.number_input("第二點 Y 座標", min_value=0, step=1, key="y2_input")
+            y1 = st.number_input("First point Y", min_value=0, step=1, key="y1_input")
+            y2 = st.number_input("Second point Y", min_value=0, step=1, key="y2_input")
 
-        if st.button("標註比例尺"):
-            if x1 != x2 or y1 != y2:  # 確保兩點不同
+        if st.button("Mark Scale"):
+            if x1 != x2 or y1 != y2:
                 st.session_state.scale_coords = [(x1, y1), (x2, y2)]
-                st.success(f"✅ 你已選取比例尺範圍: {abs(x2 - x1):.2f} px")
-                st.rerun()  # **強制重新繪製紅點**
+                st.success(f"✅ Selected scale range: {abs(x2 - x1):.2f} px")
+                st.rerun()
             else:
-                st.error("⚠️ 兩個座標不能完全相同，請重新輸入！")
+                st.error("⚠️ The two coordinates cannot be identical. Please re-enter.")
 
-        # **顯示圖片 + 即時更新標註點**
         fig = plot_image_with_annotations()
         st.plotly_chart(fig, use_container_width=True)
 
-        # **處理比例尺標註與計算 µm/px**
         handle_scale_annotation()
-
 
 def main():
     if "page" not in st.session_state:
-        st.session_state.page = 1  # 預設第一頁
+        st.session_state.page = 1
 
-    # **顯示 User Guide**
-    show_user_guide()  
+    show_user_guide()
 
     if st.session_state.page == 1:
         upload_and_mark_scale()
@@ -627,19 +599,17 @@ def main():
     elif st.session_state.page == 3:
         analyze_particles_page()
     elif st.session_state.page == 4:
-        download_report_page()  # **新增下載報告頁面**
+        download_report_page()
 
-    # **頁面導航按鈕**
     col1, col2 = st.columns([1, 5])
     with col1:
         if st.session_state.page > 1:
             if st.button("Previous"):
                 st.session_state.page -= 1
     with col2:
-        if st.session_state.page < 4:  # **修改最大頁數**
+        if st.session_state.page < 4:
             if st.button("Next"):
                 st.session_state.page += 1
-
 
 if __name__ == "__main__":
     main()
