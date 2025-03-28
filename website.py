@@ -516,7 +516,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 # Debug: 檢查 z 軸強度
-def check_z_distribution(mask):
+def check_z_distribution(mask, layer_name):
     ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
     pixel_values = mask[ys, xs]  # 根據 mask 擷取像素強度
     
@@ -526,18 +526,19 @@ def check_z_distribution(mask):
     
     # 如果最大值等於最小值，則顯示警告
     if pixel_max == pixel_min:
-        st.warning(f"Warning: All pixels in this mask have the same value: {pixel_min}")
+        st.warning(f"Layer '{layer_name}': All pixels have the same value: {pixel_min}")
     
     # 顯示強度範圍
-    st.write(f"Intensity Range for this layer: {pixel_min} to {pixel_max}")
+    st.write(f"Layer '{layer_name}' Intensity Range: {pixel_min} to {pixel_max}")
 
 # 測試 mask 是否正常運行
 def test_masks():
     for i, mask in enumerate(st.session_state.class_masks):
-        check_z_distribution(mask)
+        layer_name = f"Layer {i+1}"
+        check_z_distribution(mask, layer_name)
 
 # 繪製 z 軸強度分佈圖
-def plot_z_distribution(mask):
+def plot_z_distribution(mask, layer_name):
     ys, xs = np.where(mask > 0)
     pixel_values = mask[ys, xs]
     pixel_min = np.min(pixel_values)
@@ -545,8 +546,9 @@ def plot_z_distribution(mask):
     
     normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)
     
+    st.write(f"Plotting Z Distribution for {layer_name}")
     plt.hist(normed_depth, bins=50, range=(0, 1))
-    plt.title("Z Axis Distribution for Layer")
+    plt.title(f"Z Axis Distribution for {layer_name}")
     plt.xlabel("Normalized Z Depth")
     plt.ylabel("Frequency")
     plt.show()
@@ -567,6 +569,9 @@ def view_3d_model():
         return
 
     points = []
+
+    # Debug: 檢查每層的像素強度
+    test_masks()
 
     # 定義顏色和透明度
     colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
