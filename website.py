@@ -661,14 +661,15 @@ def main():
     elif st.session_state.page == 5:
         download_report_page()
 
+    # Navigation buttons (two columns only)
     col1, col2 = st.columns([1, 5])
     with col1:
         if st.session_state.page > 1:
-            if st.button("Previous"):
+            if st.button("⬅️ Previous", use_container_width=True):
                 st.session_state.page -= 1
     with col2:
         if st.session_state.page < 5:
-            if st.button("Next"):
+            if st.button("Next ➡️", use_container_width=True):
                 st.session_state.page += 1
 
 if __name__ == "__main__":
