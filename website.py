@@ -532,24 +532,22 @@ def view_3d_model():
     # 定義顏色和透明度
     colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
 
-    # 使用來自原圖的像素強度來設定每個層的深度
+    # 根據原圖的強度來設置 z 軸的位置
     for i, mask in enumerate(masks):
         ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
 
         # 讀取原圖的強度並進行歸一化處理
         pixel_values = mask[ys, xs]  # 根據 mask 擷取像素強度
-        if np.any(pixel_values != 0):  # 確保不會除以零
-            pixel_min = np.min(pixel_values)
-            pixel_max = np.max(pixel_values)
-            # 防止除以零，將零強度設定為最小非零強度的值
-            if pixel_max > pixel_min:
-                normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)  # 強度歸一化
-            else:
-                normed_depth = np.zeros_like(pixel_values)  # 如果最大值等於最小值，則設定為零
+        pixel_min = np.min(pixel_values)
+        pixel_max = np.max(pixel_values)
+        
+        # 防止除以零，將零強度設定為最小非零強度的值
+        if pixel_max > pixel_min:
+            normed_depth = (pixel_values - pixel_min) / (pixel_max - pixel_min)  # 強度歸一化
         else:
-            normed_depth = np.zeros_like(pixel_values)  # 如果所有強度為零，則設定為零
+            normed_depth = np.zeros_like(pixel_values)  # 如果最大值等於最小值，則設定為零
 
-        # 根據歸一化後的強度賦予深度
+        # 根據歸一化後的強度設置 z 軸深度
         for y, x, depth in zip(ys, xs, normed_depth):
             points.append((x, y, depth, colors[i]))  # 顏色根據層次設置
 
