@@ -527,14 +527,12 @@ def view_3d_model():
         st.error("⚠️ Incomplete mask data.")
         return
 
-    # Remove debug info
     points = []
 
     # 定義顏色和透明度
     colors = ['rgba(255, 0, 0, 0.8)', 'rgba(0, 255, 0, 0.8)', 'rgba(0, 0, 255, 0.8)', 'rgba(255, 255, 0, 0.8)', 'rgba(255, 0, 255, 0.8)']
 
     # 使用來自原圖的像素強度來設定每個層的深度
-    z_min, z_max = 0.0, 1.0  # 深度範圍
     for i, mask in enumerate(masks):
         ys, xs = np.where(mask > 0)  # 取得所有非零像素的位置
 
