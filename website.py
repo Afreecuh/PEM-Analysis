@@ -374,12 +374,12 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from datetime import datetime
-import openai
+from openai import OpenAI
 import streamlit as st
 
 def generate_pdf():
     # ✅ 安全地從 secrets 讀取 OpenAI API Key
-    openai.api_key = st.secrets["openai"]["api_key"]
+    client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 
     def query_gpt_for_insights(layer_data, extra_metrics):
         prompt = f"""
@@ -396,7 +396,7 @@ def generate_pdf():
         """
 
         try:
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
