@@ -16,6 +16,7 @@ from skimage.measure import regionprops, label
 import streamlit.components.v1 as components
 import matplotlib.pyplot as plt
 import openai
+openai.api_key = st.secrets["openai"]["api_key"]
 
 
 # In[1]:
