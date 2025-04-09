@@ -634,11 +634,11 @@ def main():
     if st.session_state.page == 1:
         upload_and_mark_scale()
     elif st.session_state.page == 2:
-        otsu_segmentation()
+        analyze_pt_particles_page()
     elif st.session_state.page == 3:
         view_3d_model()
     elif st.session_state.page == 4:
-        analyze_particles_page()
+        ncc_match_and_overlay_page()
     elif st.session_state.page == 5:
         download_report_page()
 
