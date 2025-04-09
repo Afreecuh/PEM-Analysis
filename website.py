@@ -186,16 +186,16 @@ def analyze_porosity_page():
         use_container_width=True
     )
 
-    # --- Pore Diameter Distribution Histogram ---
+    # --- Pore Diameter Distribution Histogram (Grouped) ---
     st.subheader("📊 Pore Diameter Distribution Histogram")
     fig = go.Figure()
     if primary_diameters:
-        fig.add_trace(go.Histogram(x=primary_diameters, nbinsx=15, name="Primary (<10 nm)", marker_color="blue"))
+        fig.add_trace(go.Histogram(x=primary_diameters, nbinsx=15, name="Primary (≤10 nm)", marker_color="blue"))
     if secondary_diameters:
         fig.add_trace(go.Histogram(x=secondary_diameters, nbinsx=15, name="Secondary (≥10 nm)", marker_color="orange"))
     fig.update_layout(
-        barmode="overlay",
-        title="Pore Diameter Distribution",
+        barmode="group",
+        title="Pore Diameter Distribution (Grouped)",
         xaxis_title="Diameter (nm)",
         yaxis_title="Count"
     )
