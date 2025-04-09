@@ -463,7 +463,8 @@ def show_user_guide():
 
 
 def generate_pdf():
-    client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+    client = openai  # ✅ 正確寫法：使用 openai 套件
+
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
