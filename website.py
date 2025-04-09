@@ -99,58 +99,70 @@ def handle_scale_annotation():
 
 def analyze_pt_particles_page():
     inject_ga()
-    st.title("🪙 Pt Particle Analysis with CCL + NCC")
+    st.title("⚙️ Pt Particle Analysis with CCL + NCC")
 
     if st.session_state.image is None or st.session_state.pixel_to_um is None:
         st.error("⚠️ Please upload an image and set the scale first!")
         return
 
-    # 1. Image Preparation
-    image = np.array(st.session_state.image.convert("L"))
-    height, width = image.shape
-    image_eq = cv2.equalizeHist(image)
-    image_blur = cv2.GaussianBlur(image_eq, (5, 5), 0)
+    image_np = np.array(st.session_state.image.convert("L"))
 
-    # 2. FFT Background Removal
-    f = fft2(image_blur)
+    # === 1. FFT Background Removal ===
+    f = fft2(image_np)
     fshift = fftshift(f)
-    crow, ccol = height // 2, width // 2
+    crow, ccol = fshift.shape[0] // 2, fshift.shape[1] // 2
     fshift[crow-10:crow+10, ccol-10:ccol+10] *= 0.1
     img_cleaned = np.abs(ifft2(ifftshift(fshift)))
     img_cleaned = exposure.rescale_intensity(img_cleaned, in_range='image', out_range=(0, 255)).astype(np.uint8)
 
-    # 3. Multi-Otsu Segmentation
-    thresholds = threshold_multiotsu(img_cleaned, classes=4)
-    regions = np.digitize(img_cleaned, bins=thresholds)
+    st.subheader("📷 FFT Background Removal")
+    st.image(img_cleaned, caption="FFT Cleaned Image", use_column_width=True, clamp=True)
 
-    # 4. Particle Detection - CCL (Brightest Layer)
+    # === 2. Multi-Otsu Segmentation ===
+    thresholds = threshold_multiotsu(img_cleaned, classes=4)
+    segmented = np.digitize(img_cleaned, bins=thresholds)
+
+    st.subheader("🧪 Multi-Otsu Segmentation Result")
+    st.image(segmented * 85, caption="Segmented Classes (4 classes)", use_column_width=True, clamp=True)
+
+    # === 3. Pt Particle Detection ===
     layer = 3
-    particles_mask = (regions == layer)
+    nm_per_pixel = st.session_state.pixel_to_um * 1000
+    area_conversion = nm_per_pixel ** 2
+    particles_mask = (segmented == layer)
     particles_mask = remove_small_objects(particles_mask, min_size=10)
     labeled_particles = label(particles_mask)
     props = regionprops(labeled_particles)
 
-    nm_per_pixel = st.session_state.pixel_to_um * 1000
-    area_conversion = nm_per_pixel ** 2
-    total_area_image_nm2 = height * width * area_conversion
-
-    ccl_areas, ccl_sizes, ccl_surfs = [], [], []
+    # === 4. CCL for larger particles
+    ccl_areas_nm2 = []
+    ccl_grain_sizes = []
+    ccl_surface_areas = []
     ccl_mask = np.zeros_like(particles_mask, dtype=np.uint8)
 
     for p in props:
         area_nm2 = p.area * area_conversion
         if area_nm2 > 100:
             d = 2 * np.sqrt(area_nm2 / np.pi)
-            sa = np.pi * d**2
-            ccl_areas.append(area_nm2)
-            ccl_sizes.append(d)
-            ccl_surfs.append(sa)
+            surface_area = np.pi * d**2
+            ccl_areas_nm2.append(area_nm2)
+            ccl_grain_sizes.append(d)
+            ccl_surface_areas.append(surface_area)
             coords = p.coords
             ccl_mask[tuple(zip(*coords))] = 1
 
-    # 5. NCC Matching (for small particles)
-    best_region = max(props, key=lambda p: (4 * np.pi * p.area / (p.perimeter**2)) if p.perimeter > 0 else 0, default=None)
-    ncc_areas, ncc_sizes, ncc_surfs, ncc_matches = [], [], [], []
+    # === 5. NCC for smaller particles
+    best_region, best_circ = None, 0
+    for p in props:
+        circ = (4 * np.pi * p.area / (p.perimeter ** 2)) if p.perimeter > 0 else 0
+        if circ > best_circ:
+            best_circ = circ
+            best_region = p
+
+    ncc_matches = []
+    ncc_areas_nm2 = []
+    ncc_grain_sizes = []
+    ncc_surface_areas = []
 
     if best_region:
         minr, minc, maxr, maxc = best_region.bbox
@@ -161,58 +173,59 @@ def analyze_pt_particles_page():
         h, w = template.shape
 
         for pt in zip(*loc[::-1]):
-            cy, cx = pt[1] + h // 2, pt[0] + w // 2
+            cy = pt[1] + h // 2
+            cx = pt[0] + w // 2
             if not ccl_mask[cy, cx]:
-                ncc_matches.append(pt)
-                template_area = np.count_nonzero(template)
-                area_nm2 = template_area * area_conversion
+                template_area_px = np.count_nonzero(template)
+                area_nm2 = template_area_px * area_conversion
                 d = 2 * np.sqrt(area_nm2 / np.pi)
-                sa = np.pi * d**2
-                ncc_areas.append(area_nm2)
-                ncc_sizes.append(d)
-                ncc_surfs.append(sa)
+                surface_area = np.pi * d**2
+                ncc_areas_nm2.append(area_nm2)
+                ncc_grain_sizes.append(d)
+                ncc_surface_areas.append(surface_area)
+                ncc_matches.append(pt)
 
-    # 6. Heatmap
-    grid_rows, grid_cols = 10, 10
-    cell_h, cell_w = height // grid_rows, width // grid_cols
-    heatmap = np.zeros((grid_rows, grid_cols), dtype=int)
+    # === 6. Summary Calculation ===
+    all_areas_nm2 = ccl_areas_nm2 + ncc_areas_nm2
+    grain_sizes_nm = ccl_grain_sizes + ncc_grain_sizes
+    spherical_surface_areas = ccl_surface_areas + ncc_surface_areas
 
-    for p in props:
-        if p.area * area_conversion > 100:
-            cy, cx = p.centroid
-            r = min(int(cy // cell_h), grid_rows - 1)
-            c = min(int(cx // cell_w), grid_cols - 1)
-            heatmap[r, c] += 1
+    image_h, image_w = image_np.shape
+    total_area_image_nm2 = image_h * image_w * area_conversion
+    total_surface_area_nm2 = np.sum(spherical_surface_areas)
+    effective_surface_area_per_nm2 = total_surface_area_nm2 / total_area_image_nm2
+    num_particles = len(all_areas_nm2)
+    avg_grain_size_nm = np.mean(grain_sizes_nm)
+    mean_area_nm2 = np.mean(all_areas_nm2)
 
-    for pt in ncc_matches:
-        cy, cx = pt[1] + h // 2, pt[0] + w // 2
-        r = min(int(cy // cell_h), grid_rows - 1)
-        c = min(int(cx // cell_w), grid_cols - 1)
-        heatmap[r, c] += 1
-
-    heatmap_std = np.std(heatmap)
-
-    # 7. Results Summary
-    all_areas = ccl_areas + ncc_areas
-    all_sizes = ccl_sizes + ncc_sizes
-    all_surfs = ccl_surfs + ncc_surfs
-
-    st.session_state.pt_summary = {
-        "Number of Particles": len(all_areas),
-        "CCL Particles": len(ccl_areas),
-        "NCC Particles": len(ncc_areas),
-        "Avg Grain Size (nm)": np.mean(all_sizes) if all_sizes else 0,
-        "Total Surface Area (nm²)": np.sum(all_surfs),
-        "Effective SA per nm²": np.sum(all_surfs) / total_area_image_nm2,
-        "Image Area (nm²)": total_area_image_nm2,
-        "Mean Area (nm²)": np.mean(all_areas) if all_areas else 0,
-        "Heatmap Std Dev": heatmap_std
+    # === 7. Display Summary Table ===
+    summary = {
+        "Total Particles": num_particles,
+        "CCL Particles": len(ccl_areas_nm2),
+        "NCC Particles": len(ncc_areas_nm2),
+        "Average Grain Size (nm)": avg_grain_size_nm,
+        "Mean Particle Area (nm²)": mean_area_nm2,
+        "Total Surface Area (nm²)": total_surface_area_nm2,
+        "Effective Surface Area per nm²": effective_surface_area_per_nm2
     }
 
-    st.session_state.pt_particle_areas = all_areas
-    st.session_state.pt_particle_sizes = all_sizes
-    st.session_state.pt_heatmap = heatmap
-    st.session_state.pt_overlay_info = (props, img_cleaned, ncc_matches, h, w)
+    st.subheader("📊 Pt Particle Summary")
+    df_summary = pd.DataFrame(summary, index=["Result"])
+    st.dataframe(df_summary)
+
+    # ✅ Store data for use in Page 4
+    st.session_state.pt_props = props
+    st.session_state.img_cleaned = img_cleaned
+    st.session_state.ccl_mask = ccl_mask
+    st.session_state.ncc_matches = ncc_matches
+    st.session_state.ccl_areas_nm2 = ccl_areas_nm2
+    st.session_state.ncc_areas_nm2 = ncc_areas_nm2
+    st.session_state.ccl_grain_sizes = ccl_grain_sizes
+    st.session_state.ncc_grain_sizes = ncc_grain_sizes
+    st.session_state.ccl_surface_areas = ccl_surface_areas
+    st.session_state.ncc_surface_areas = ncc_surface_areas
+    st.session_state.image_shape = image_np.shape
+    st.session_state.pixel_to_nm = nm_per_pixel
 
     st.success("✅ Pt particle analysis completed. Proceed to the next page to view heatmap and distributions.")
 
