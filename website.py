@@ -753,6 +753,38 @@ def next_page():
 def prev_page():
     st.session_state.page -= 1
 
+# **Handle scale annotation and calculate µm/px**
+def handle_scale_annotation():
+    if len(st.session_state.scale_coords) == 2:
+        x1, y1 = st.session_state.scale_coords[0]
+        x2, y2 = st.session_state.scale_coords[1]
+        scale_pixels = abs(x2 - x1)  # **Only calculate X-direction distance**
+        st.session_state.scale_pixels = scale_pixels
+
+        st.success(f"✅ Selected scale range: {scale_pixels:.2f} px")
+
+        # **Input actual scale length**
+        scale_length_input = st.text_input("Enter actual scale length (µm):", "10")
+
+        if st.button("Calculate µm/px"):
+            try:
+                scale_length_um = float(scale_length_input)
+                st.session_state.scale_length_um = scale_length_um
+                pixel_to_um = scale_length_um / scale_pixels
+                st.session_state.pixel_to_um = pixel_to_um
+                st.success(f"📏 Result: {scale_length_um:.2f} µm ({pixel_to_um:.4f} µm/px)")
+
+                # ✅ Crop scale bar after conversion and overwrite image
+                from skimage import exposure
+                image_array = np.array(st.session_state.image)
+                image_array = exposure.rescale_intensity(image_array, in_range='image', out_range=(0, 255)).astype(np.uint8)
+                cropped = auto_crop_scale_bar(image_array)
+                st.session_state.image = Image.fromarray(cropped)  # ✅ Store as PIL Image again
+                st.rerun()
+
+            except ValueError:
+                st.error("⚠️ Invalid input. Please enter a number.")
+
 # **Page 1: Upload Image & Annotate Scale**
 def upload_and_mark_scale():
     inject_ga()
@@ -766,8 +798,8 @@ def upload_and_mark_scale():
 
     if uploaded_file:
         # 讀取圖片並確保其是灰階模式
-        image = Image.open(uploaded_file).convert("L")  # 強制轉換為灰階模式
-        st.session_state.image = image  # 存儲圖片至 session_state
+        image = Image.open(uploaded_file).convert("L")
+        st.session_state.image = image
         st.success("✅ Image uploaded successfully! Please mark the scale.")
 
         st.write("Manually input two coordinate points (X and Y):")
@@ -797,32 +829,30 @@ def main():
     if "page" not in st.session_state:
         st.session_state.page = 1
 
-    show_user_guide()  # Update user guide to reflect new pages
+    show_user_guide()
 
-    # Page routing based on current page number
     if st.session_state.page == 1:
-        upload_and_mark_scale()  # Handle uploading and marking scale
+        upload_and_mark_scale()
     elif st.session_state.page == 2:
-        analyze_porosity_page()  # Update this to Porosity analysis page
+        analyze_porosity_page()
     elif st.session_state.page == 3:
-        analyze_pt_particles_page()  # Pt particle analysis (CCL + NCC + Heatmap)
+        analyze_pt_particles_page()
     elif st.session_state.page == 4:
-        view_3d_model()  # 3D grayscale intensity visualization
+        view_3d_model()
     elif st.session_state.page == 5:
-        download_report_page()  # Generate and download PDF report
+        download_report_page()
 
-    # Navigation buttons for page control
     col1, col2 = st.columns([1, 5])
     with col1:
         if st.session_state.page > 1:
             if st.button("⬅️ Previous", key="prev_button"):
                 prev_page()
-                st.rerun()  # Re-run to update page state
+                st.rerun()
     with col2:
         if st.session_state.page < 5:
             if st.button("Next ➡️", key="next_button"):
                 next_page()
-                st.rerun()  # Re-run to update page state
+                st.rerun()
 
 # ✅ Run main app
 if __name__ == "__main__":
