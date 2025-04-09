@@ -463,7 +463,7 @@ def show_user_guide():
 
 
 def generate_pdf():
-    client = openai  # 使用 openai 原生 API
+    client = openai
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
@@ -554,12 +554,14 @@ def generate_pdf():
     y -= 20
     pdf.setFont("Helvetica", 11)
 
+    # Prepare prompt
+    poro_display = f"{poro_ratio:.2f}%" if poro_ratio is not None else "N/A"
     prompt = f"""
     Based on the following SEM analysis results, write a short expert commentary on:
     - What the porosity and Pt particle size may imply
     - Implications for catalyst performance or structural integrity
 
-    Porosity: {poro_ratio:.2f if poro_ratio else 'N/A'}%
+    Porosity: {poro_display}
     Pt Particles: {pt_summary.get("Total Particles", "N/A")}
     Average Grain Size: {pt_summary.get("Average Grain Size (nm)", "N/A")} nm
     Effective Surface Area: {pt_summary.get("Effective Surface Area per nm²", "N/A")}
@@ -574,6 +576,7 @@ def generate_pdf():
         ai_comment = response.choices[0].message.content.strip()
     except Exception as e:
         ai_comment = "*AI comment unavailable due to quota limit.*"
+
     for line in ai_comment.split("\n"):
         if y < 50:
             pdf.showPage()
