@@ -97,6 +97,68 @@ def handle_scale_annotation():
 # In[ ]:
 
 
+# **Page 2: Porosity Analysis**
+def analyze_porosity_page():
+    inject_ga()
+    st.title("🧪 Porosity Analysis")
+
+    if st.session_state.image is None or st.session_state.pixel_to_um is None:
+        st.error("⚠️ Please upload an image and set the scale first!")
+        return
+
+    image_np = np.array(st.session_state.image.convert("L"))
+
+    # === 1. Multi-Otsu Segmentation for Porosity Layer ===
+    thresholds = threshold_multiotsu(image_np, classes=4)
+    segmented = np.digitize(image_np, bins=thresholds)
+
+    # === 2. Extract Porosity Layer ===
+    porosity_mask = (segmented == 0).astype(np.uint8)
+    labeled_porosity = label(porosity_mask)
+    props = regionprops(labeled_porosity)
+
+    # === 3. Calculate Porosity Statistics ===
+    porosity_area_nm2 = []
+    for region in props:
+        area_nm2 = region.area * (st.session_state.pixel_to_um ** 2)
+        porosity_area_nm2.append(area_nm2)
+
+    total_porosity_area = np.sum(porosity_area_nm2)
+    image_h, image_w = image_np.shape
+    total_area_image_nm2 = image_h * image_w * (st.session_state.pixel_to_um ** 2)
+
+    porosity_ratio = (total_porosity_area / total_area_image_nm2) * 100
+
+    # === 4. Display Porosity Information ===
+    st.subheader("📊 Porosity Analysis")
+    st.write(f"Total Porosity Area: {total_porosity_area:.2f} µm²")
+    st.write(f"Total Image Area: {total_area_image_nm2:.2f} µm²")
+    st.write(f"Porosity Ratio: {porosity_ratio:.2f}%")
+
+    # === 5. Display Porosity Mask ===
+    st.subheader("🔬 Porosity Mask")
+    st.image(porosity_mask * 255, caption="Porosity Binary Mask", use_column_width=True, clamp=True)
+
+    # === 6. Visualize Segmentation and Porosity Mask ===
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.imshow(segmented, cmap="gray")
+    ax.set_title("Multi-Otsu Segmentation - Porosity Layer")
+    ax.axis("off")
+    st.pyplot(fig)
+
+    # Store Porosity Layer info for Page 3
+    st.session_state.porosity_mask = porosity_mask
+    st.session_state.porosity_area_nm2 = porosity_area_nm2
+    st.session_state.porosity_ratio = porosity_ratio
+    st.session_state.porosity_props = props
+
+    st.success("✅ Porosity analysis completed. Proceed to the next page to view Pt particle analysis and heatmap.")
+
+
+# In[ ]:
+
+
+# **Page 3: Pt Particle Analysis with CCL + NCC + Heatmap**
 def analyze_pt_particles_page():
     inject_ga()
     st.title("⚙️ Pt Particle Analysis with CCL + NCC")
@@ -230,85 +292,12 @@ def analyze_pt_particles_page():
     st.success("✅ Pt particle analysis completed. Proceed to the next page to view heatmap and distributions.")
 
 
-# In[ ]:
-
-
-def ncc_match_and_overlay_page():
-    inject_ga()
-    st.title("🔬 Pt Particle Visualization and Heatmap")
-
-    if "pt_overlay_info" not in st.session_state:
-        st.error("⚠️ Please complete the Pt particle analysis first!")
-        return
-
-    props, img_cleaned, ncc_matches, h, w = st.session_state.pt_overlay_info
-
-    # --- Draw overlay image ---
-    contour_img = cv2.cvtColor(img_cleaned, cv2.COLOR_GRAY2BGR)
-
-    nm_per_pixel = st.session_state.pixel_to_um * 1000
-    area_conversion = nm_per_pixel ** 2
-
-    for p in props:
-        if p.area * area_conversion > 100:
-            mask = np.zeros_like(img_cleaned, dtype=np.uint8)
-            mask[tuple(zip(*p.coords))] = 255
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            cv2.drawContours(contour_img, contours, -1, (0, 255, 0), 1)  # Green
-
-    for pt in ncc_matches:
-        cv2.rectangle(contour_img, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), 1)  # Red
-
-    # --- Display overlay ---
-    st.image(cv2.cvtColor(contour_img, cv2.COLOR_BGR2RGB), caption="Detected Pt Particles (Green = CCL, Red = NCC)", use_column_width=True)
-
-    # --- Area Histogram ---
-    st.subheader("📊 Pt Particle Area Distribution (nm²)")
-    st.plotly_chart(
-        px.histogram(
-            x=st.session_state.pt_particle_areas,
-            nbins=20,
-            labels={"x": "Area (nm²)", "y": "Count"},
-            title="Area Distribution of Detected Pt Particles",
-            opacity=0.7,
-        ).update_traces(marker_color="steelblue"),
-        use_container_width=True
-    )
-
-    # --- Size Histogram ---
-    st.subheader("📊 Pt Particle Diameter Distribution (nm)")
-    st.plotly_chart(
-        px.histogram(
-            x=st.session_state.pt_particle_sizes,
-            nbins=20,
-            labels={"x": "Diameter (nm)", "y": "Count"},
-            title="Grain Size Distribution",
-            opacity=0.7,
-        ).update_traces(marker_color="purple"),
-        use_container_width=True
-    )
-
-    # --- Heatmap ---
-    st.subheader("🔥 Heatmap of Pt Particle Distribution")
-    heatmap = st.session_state.pt_heatmap
-
-    fig = px.imshow(
-        heatmap, 
-        color_continuous_scale="inferno", 
-        labels={"color": "Number of Particles"},
-        title="Particle Count Per Grid Cell"
-    )
-    fig.update_layout(xaxis_title="Grid Column", yaxis_title="Grid Row")
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.info(f"ℹ️ Heatmap Standard Deviation: **{st.session_state.pt_summary['Heatmap Std Dev']:.2f}**")
-
-
 # User Guide
 
 # In[ ]:
 
 
+# **Show User Guide**
 def show_user_guide():
     """Display User Guide based on current page"""
     guide_content = {
@@ -321,41 +310,37 @@ def show_user_guide():
         - Click **Next** to proceed.
         """,
         2: """
-        ### **Page 2: Pt Particle Analysis**
+        ### **Page 2: Porosity Analysis**
         - The system performs **background cleaning (FFT)** and **Multi-Otsu segmentation**.
-        - It selects the brightest layer to detect **Pt particles** using:
-          - CCL (Connected Component Labeling) for larger particles
-          - NCC (Normalized Cross-Correlation) for matching smaller ones
-        - Calculates particle count, grain size, total surface area, and effective surface area.
-        - Click **Next** to visualize distributions and heatmap.
+        - It selects the **porosity layer** to analyze pores and calculate:
+          - Total pore area
+          - Pore distribution
+        - Click **Next** to proceed to Pt particle analysis.
         """,
         3: """
-        ### **Page 3: 3D Intensity Viewer**
+        ### **Page 3: Pt Particle Analysis (CCL + NCC + Heatmap)**
+        - The system detects **Pt particles** using:
+          - **CCL** for larger particles
+          - **NCC** for matching smaller ones
+        - Generates **particle size distribution** and **heatmap**.
+        - Click **Next** to view 3D visualization of intensity.
+        """,
+        4: """
+        ### **Page 4: 3D Visualization**
         - Visualize grayscale intensities as a 3D structure.
         - Each pixel's **brightness determines its depth and color**.
         - Adjust **Gaussian smoothing (σ)** to reduce noise.
         - Explore internal topography layer by layer.
-        - Click **Next** to analyze particle distribution.
-        """,
-        4: """
-        ### **Page 4: Particle Distribution & Heatmap**
-        - View overlay of detected particles:
-          - Green = CCL particles
-          - Red = NCC-matched small particles
-        - Histogram of:
-          - Particle area (nm²)
-          - Grain size (diameter in nm)
-        - Heatmap shows particle density per region.
-        - Summary includes **standard deviation of particle distribution**.
+        - Click **Next** to generate and download the report.
         """,
         5: """
         ### **Page 5: Download Report**
         - Click **"Generate PDF Report"** to create a detailed analysis report.
         - The report includes:
           - Scale information
-          - Pt particle statistics (count, size, surface area)
-          - Heatmap summary
-          - GPT-generated expert summary
+          - Porosity and Pt particle analysis
+          - Heatmap and 3D visualization summary
+          - GPT-generated expert commentary
         - Click **"Download PDF"** to save it to your device.
         """
     }
@@ -651,31 +636,32 @@ def main():
     if "page" not in st.session_state:
         st.session_state.page = 1
 
-    show_user_guide()
+    show_user_guide()  # Update user guide to reflect new pages
 
+    # Page routing based on current page number
     if st.session_state.page == 1:
-        upload_and_mark_scale()
+        upload_and_mark_scale()  # Handle uploading and marking scale
     elif st.session_state.page == 2:
-        analyze_pt_particles_page()
+        analyze_porosity_page()  # Update this to Porosity analysis page
     elif st.session_state.page == 3:
-        view_3d_model()
+        analyze_pt_particles_page()  # Pt particle analysis (CCL + NCC + Heatmap)
     elif st.session_state.page == 4:
-        ncc_match_and_overlay_page()
+        view_3d_model()  # 3D grayscale intensity visualization
     elif st.session_state.page == 5:
-        download_report_page()
+        download_report_page()  # Generate and download PDF report
 
-    # ✅ Navigation buttons (集中統一管理)
+    # Navigation buttons for page control
     col1, col2 = st.columns([1, 5])
     with col1:
         if st.session_state.page > 1:
             if st.button("⬅️ Previous", key="prev_button"):
                 prev_page()
-                st.rerun()  # 避免殘留事件
+                st.rerun()  # Re-run to update page state
     with col2:
         if st.session_state.page < 5:
             if st.button("Next ➡️", key="next_button"):
                 next_page()
-                st.rerun()
+                st.rerun()  # Re-run to update page state
 
 # ✅ Run main app
 if __name__ == "__main__":
