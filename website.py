@@ -48,17 +48,15 @@ def update_coords(click_x, click_y):
     """Record coordinates of user clicks, maximum of two points"""
     if len(st.session_state.scale_coords) < 2:
         st.session_state.scale_coords.append((click_x, click_y))
-        st.rerun()  # Refresh UI to show red dot
+        st.rerun()
     else:
         st.warning("⚠️ Two points already marked. Please input the actual scale length!")
 
 # **Plot Image with Annotations**
 def plot_image_with_annotations():
-    """Display image and allow user to mark scale range."""
     image = st.session_state.image
-    fig = px.imshow(np.array(image), color_continuous_scale='gray')  # 強制使用灰階顯示圖像
+    fig = px.imshow(np.array(image), color_continuous_scale='gray')
 
-    # **Add annotation points**
     for coord in st.session_state.scale_coords:
         fig.add_trace(go.Scatter(
             x=[coord[0]],
@@ -75,12 +73,10 @@ def handle_scale_annotation():
     if len(st.session_state.scale_coords) == 2:
         x1, y1 = st.session_state.scale_coords[0]
         x2, y2 = st.session_state.scale_coords[1]
-        scale_pixels = abs(x2 - x1)  # **Only calculate X-direction distance**
+        scale_pixels = abs(x2 - x1)
         st.session_state.scale_pixels = scale_pixels
-
         st.success(f"✅ Selected scale range: {scale_pixels:.2f} px")
-        
-        # **Input actual scale length**
+
         scale_length_input = st.text_input("Enter actual scale length (µm):", "10")
 
         if st.button("Calculate µm/px"):
@@ -90,6 +86,12 @@ def handle_scale_annotation():
                 pixel_to_um = scale_length_um / scale_pixels
                 st.session_state.pixel_to_um = pixel_to_um
                 st.success(f"📏 Result: {scale_length_um:.2f} µm ({pixel_to_um:.4f} µm/px)")
+
+                # ✅ 裁剪比例尺並更新 session_state.image
+                image_gray = np.array(st.session_state.image.convert("L"))
+                cropped = auto_crop_scale_bar(image_gray)
+                st.session_state.image = Image.fromarray(cropped)
+
             except ValueError:
                 st.error("⚠️ Invalid input. Please enter a number.")
 
@@ -99,12 +101,9 @@ def handle_scale_annotation():
 
 # === 2. Preprocess Image: Crop Scale Bar ===
 def auto_crop_scale_bar(img, threshold=80):
-    """
-    Crop the image by removing the scale bar region if detected at the bottom.
-    """
     h, _ = img.shape
-    if np.mean(img[int(h * 0.9):]) < threshold:  # Check bottom region for scale bar
-        black_row = np.where(np.mean(img, axis=1) < threshold)[0][0]  # Find first row of black region
+    if np.mean(img[int(h * 0.9):]) < threshold:
+        black_row = np.where(np.mean(img, axis=1) < threshold)[0][0]
         return img[:black_row, :]
     return img
 
@@ -113,15 +112,17 @@ def analyze_porosity_page():
     inject_ga()
     st.title("🔬 Porosity Analysis")
 
-    # Check if image is available
     if st.session_state.image is None:
         st.error("⚠️ Please upload an image first!")
         return
 
-    # --- Preprocess Image for Porosity Analysis ---
+    # --- 使用已裁剪圖像（保險處理）---
     image_gray = np.array(st.session_state.image.convert("L"))
-    image_cropped = auto_crop_scale_bar(image_gray)
+    image_cropped = auto_crop_scale_bar(image_gray)  # 雖然第一頁已裁剪，但這裡保留檢查
     image_cropped = exposure.rescale_intensity(image_cropped, in_range='image', out_range=(0, 255)).astype(np.uint8)
+
+    # ✅ 覆寫裁剪後圖片，供 Pt 分析與 3D 重建使用
+    st.session_state.image = Image.fromarray(image_cropped)
 
     # --- Multi-Otsu Segmentation ---
     thresholds = threshold_multiotsu(image_cropped, classes=4)
@@ -132,7 +133,6 @@ def analyze_porosity_page():
     area_conversion = nm_per_pixel ** 2
     total_area_image_nm2 = image_cropped.shape[0] * image_cropped.shape[1] * area_conversion
 
-    # Extract Porosity Layer (Class 0)
     porosity_mask = (segmented == 0).astype(np.uint8)
     labeled = label(porosity_mask)
     props = regionprops(labeled)
@@ -142,8 +142,6 @@ def analyze_porosity_page():
     primary_areas = []
     secondary_areas = []
     all_pore_areas_nm2 = []
-
-    # === Calculate Size Ratio (Secondary / Primary) ===
     size_ratios = []
 
     for region in props:
@@ -160,16 +158,14 @@ def analyze_porosity_page():
                 secondary_diameters.append(diameter_nm)
                 secondary_areas.append(area_nm2)
 
-            # Calculate size ratio (Secondary / Primary)
             if len(primary_diameters) > 0:
-                size_ratio = diameter_nm / primary_diameters[-1] if len(primary_diameters) > 0 else 1
+                size_ratio = diameter_nm / primary_diameters[-1]
                 size_ratios.append(size_ratio)
 
-    # --- Calculate Porosity Ratio ---
     total_pore_area = np.sum(all_pore_areas_nm2)
     pore_area_pct = (total_pore_area / total_area_image_nm2) * 100
 
-    # --- Pore Area and Size Ratio Histogram ---
+    # --- Histograms ---
     st.subheader("📊 Pore Area and Size Ratio Histogram")
     st.plotly_chart(
         px.histogram(
@@ -181,7 +177,6 @@ def analyze_porosity_page():
         use_container_width=True
     )
 
-    # --- Pore Size Ratio Histogram ---
     st.subheader("📊 Pore Size Ratio Histogram")
     st.plotly_chart(
         px.histogram(
@@ -193,16 +188,11 @@ def analyze_porosity_page():
         use_container_width=True
     )
 
-    # --- Pore Detection Image ---
     st.subheader("🔍 Pore Detection Image")
     st.image(porosity_mask * 255, caption="Porosity Mask", use_column_width=True)
 
-    # --- Show Summary Information ---
-    st.write(f"Total Pore Area: {total_pore_area:.2f} nm²")
-    st.write(f"Total Image Area: {total_area_image_nm2:.2f} nm²")
-    st.write(f"Porosity Ratio: {pore_area_pct:.2f}%")
+    st.write(f"Porosity: {pore_area_pct:.2f}%")
 
-    # Store porosity information in session state for next page
     st.session_state.pore_areas_nm2 = all_pore_areas_nm2
     st.session_state.pore_detection_img = porosity_mask * 255
     st.session_state.porosity_ratio = pore_area_pct
@@ -604,14 +594,11 @@ from scipy.ndimage import gaussian_filter
 def view_3d_model():
     st.title("🧊 3D Grayscale Intensity Viewer")
 
-    # ✅ 修正 bug：確保不會因為初次 rerun 而跳頁
-    st.session_state.page = 3
-
     if st.session_state.image is None:
         st.error("⚠️ Please upload an image first!")
         return
 
-    # ✅ Always visible smoothing slider
+    # ✅ Gaussian smoothing slider
     smoothing_sigma = st.slider("🧹 Smoothing (Gaussian Blur σ)", min_value=0.0, max_value=5.0, value=0.0, step=0.1)
 
     # 灰階轉換與模糊處理
@@ -630,9 +617,6 @@ def view_3d_model():
                 y_vals.append(y)
                 z_vals.append(intensity)
 
-    # ❌ 移除 point count display
-    # st.write(f"Total points to render: {len(x_vals)}")
-
     fig = go.Figure(data=[go.Scatter3d(
         x=x_vals,
         y=y_vals,
@@ -640,8 +624,8 @@ def view_3d_model():
         mode='markers',
         marker=dict(
             size=1,
-            color=z_vals,           # 使用強度作為顏色
-            colorscale="Greys_r",   # ✅ 反轉灰階：0=黑，255=白
+            color=z_vals,
+            colorscale="Greys_r",  # ✅ 反轉灰階：0=黑，255=白
             opacity=0.8,
             colorbar=dict(title="Intensity")
         )
