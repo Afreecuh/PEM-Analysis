@@ -172,7 +172,7 @@ def analyze_porosity_page():
             mask[tuple(zip(*coords))] = 255
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(overlay, contours, -1, (0, 255, 0), 1)
-    st.image(overlay, caption="Detected Pores (Contours)", use_column_width=True)
+    st.image(overlay, caption="Detected Pores (Contours)", use_container_width=True)
 
     # --- Pore Area Distribution ---
     st.subheader("📊 Pore Area Distribution Histogram")
@@ -243,7 +243,7 @@ def analyze_pt_particles_page():
     segmented = np.digitize(img_cropped, bins=thresholds)
 
     st.subheader("🧪 Multi-Otsu Segmentation Result")
-    st.image(segmented * 85, caption="Segmented Classes (4 classes)", use_column_width=True, clamp=True)
+    st.image(segmented * 85, caption="Segmented Classes (4 classes)", use_container_width=True, clamp=True)
 
     # === 2. FFT Background Removal ===
     f = fft2(img_cropped)
@@ -328,7 +328,7 @@ def analyze_pt_particles_page():
 
     st.image(cv2.cvtColor(detection_img, cv2.COLOR_BGR2RGB),
              caption="Green: CCL-detected | Red: NCC-matched",
-             use_column_width=True)
+             use_container_width=True)
 
     # === 6. Grain Size Histogram ===
     st.subheader("📊 Grain Size Histogram (Pt Particle Diameter)")
@@ -760,7 +760,7 @@ def upload_and_mark_scale():
     # ✅ 圖片置中顯示，減少左右空白
     col_left, col_img, col_right = st.columns([1, 6, 1])
     with col_img:
-        st.image("cover_image.png", use_column_width=True)
+        st.image("cover_image.png", use_container_width=True)
 
     uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg", "tif", "tiff"], key="image_upload")
 
