@@ -143,6 +143,9 @@ def analyze_porosity_page():
     secondary_areas = []
     all_pore_areas_nm2 = []
 
+    # === Calculate Size Ratio (Secondary / Primary) ===
+    size_ratios = []
+
     for region in props:
         if region.area > 10:
             diameter_px = 2 * np.sqrt(region.area / np.pi)
@@ -157,6 +160,11 @@ def analyze_porosity_page():
                 secondary_diameters.append(diameter_nm)
                 secondary_areas.append(area_nm2)
 
+            # Calculate size ratio (Secondary / Primary)
+            if len(primary_diameters) > 0:
+                size_ratio = diameter_nm / primary_diameters[-1] if len(primary_diameters) > 0 else 1
+                size_ratios.append(size_ratio)
+
     # --- Calculate Porosity Ratio ---
     total_pore_area = np.sum(all_pore_areas_nm2)
     pore_area_pct = (total_pore_area / total_area_image_nm2) * 100
@@ -170,6 +178,18 @@ def analyze_porosity_page():
             labels={"x": "Pore Area (nm²)", "y": "Count"},
             title="Pore Area Distribution"
         ).update_traces(marker_color="steelblue"),
+        use_container_width=True
+    )
+
+    # --- Pore Size Ratio Histogram ---
+    st.subheader("📊 Pore Size Ratio Histogram")
+    st.plotly_chart(
+        px.histogram(
+            x=size_ratios,
+            nbins=20,
+            labels={"x": "Size Ratio (Secondary / Primary)", "y": "Count"},
+            title="Pore Size Ratio Distribution"
+        ).update_traces(marker_color="orange"),
         use_container_width=True
     )
 
@@ -193,134 +213,108 @@ def analyze_porosity_page():
 # In[ ]:
 
 
-# **Page 3: Pt Particle Analysis (CCL + NCC + Heatmap)**
-def analyze_pt_particles_page():
+# **Page 2: Porosity Analysis (孔隙分析)**
+def analyze_porosity_page():
     inject_ga()
-    st.title("⚙️ Pt Particle Analysis with CCL + NCC")
+    st.title("🔬 Porosity Analysis")
 
-    if st.session_state.image is None or st.session_state.pixel_to_um is None:
-        st.error("⚠️ Please upload an image and set the scale first!")
+    # Check if image is available
+    if st.session_state.image is None:
+        st.error("⚠️ Please upload an image first!")
         return
 
-    image_np = np.array(st.session_state.image.convert("L"))
+    # --- Preprocess Image for Porosity Analysis ---
+    image_gray = np.array(st.session_state.image.convert("L"))
+    image_cropped = auto_crop_scale_bar(image_gray)
+    image_cropped = exposure.rescale_intensity(image_cropped, in_range='image', out_range=(0, 255)).astype(np.uint8)
 
-    # === 1. FFT Background Removal ===
-    f = fft2(image_np)
-    fshift = fftshift(f)
-    crow, ccol = fshift.shape[0] // 2, fshift.shape[1] // 2
-    fshift[crow-10:crow+10, ccol-10:ccol+10] *= 0.1
-    img_cleaned = np.abs(ifft2(ifftshift(fshift)))
-    img_cleaned = exposure.rescale_intensity(img_cleaned, in_range='image', out_range=(0, 255)).astype(np.uint8)
+    # --- Multi-Otsu Segmentation ---
+    thresholds = threshold_multiotsu(image_cropped, classes=4)
+    segmented = np.digitize(image_cropped, bins=thresholds)
 
-    st.subheader("📷 FFT Background Removal")
-    st.image(img_cleaned, caption="FFT Cleaned Image", use_column_width=True, clamp=True)
-
-    # === 2. Multi-Otsu Segmentation ===
-    thresholds = threshold_multiotsu(img_cleaned, classes=4)
-    segmented = np.digitize(img_cleaned, bins=thresholds)
-
-    st.subheader("🧪 Multi-Otsu Segmentation Result")
-    st.image(segmented * 85, caption="Segmented Classes (4 classes)", use_column_width=True, clamp=True)
-
-    # === 3. Pt Particle Detection ===
-    layer = 3
+    # --- Calculate Pore Areas ---
     nm_per_pixel = st.session_state.pixel_to_um * 1000
     area_conversion = nm_per_pixel ** 2
-    particles_mask = (segmented == layer)
-    particles_mask = remove_small_objects(particles_mask, min_size=10)
-    labeled_particles = label(particles_mask)
-    props = regionprops(labeled_particles)
+    total_area_image_nm2 = image_cropped.shape[0] * image_cropped.shape[1] * area_conversion
 
-    # === 4. CCL for larger particles
-    ccl_areas_nm2 = []
-    ccl_grain_sizes = []
-    ccl_surface_areas = []
-    ccl_mask = np.zeros_like(particles_mask, dtype=np.uint8)
+    # Store the total area for later use in Pt analysis
+    st.session_state.total_area_image_nm2 = total_area_image_nm2
 
-    for p in props:
-        area_nm2 = p.area * area_conversion
-        if area_nm2 > 100:
-            d = 2 * np.sqrt(area_nm2 / np.pi)
-            surface_area = np.pi * d**2
-            ccl_areas_nm2.append(area_nm2)
-            ccl_grain_sizes.append(d)
-            ccl_surface_areas.append(surface_area)
-            coords = p.coords
-            ccl_mask[tuple(zip(*coords))] = 1
+    # Extract Porosity Layer (Class 0)
+    porosity_mask = (segmented == 0).astype(np.uint8)
+    labeled = label(porosity_mask)
+    props = regionprops(labeled)
 
-    # === 5. NCC for smaller particles
-    best_region, best_circ = None, 0
-    for p in props:
-        circ = (4 * np.pi * p.area / (p.perimeter ** 2)) if p.perimeter > 0 else 0
-        if circ > best_circ:
-            best_circ = circ
-            best_region = p
+    primary_diameters = []
+    secondary_diameters = []
+    primary_areas = []
+    secondary_areas = []
+    all_pore_areas_nm2 = []
 
-    ncc_matches = []
-    ncc_areas_nm2 = []
-    ncc_grain_sizes = []
-    ncc_surface_areas = []
+    # === Calculate Size Ratio (Secondary / Primary) ===
+    size_ratios = []
 
-    if best_region:
-        minr, minc, maxr, maxc = best_region.bbox
-        template = img_cleaned[minr:maxr, minc:maxc]
-        result = cv2.matchTemplate(img_cleaned, template, cv2.TM_CCOEFF_NORMED)
-        threshold_ncc = 0.6
-        loc = np.where(result >= threshold_ncc)
-        h, w = template.shape
+    for region in props:
+        if region.area > 10:
+            diameter_px = 2 * np.sqrt(region.area / np.pi)
+            diameter_nm = diameter_px * nm_per_pixel
+            area_nm2 = region.area * area_conversion
+            all_pore_areas_nm2.append(area_nm2)
 
-        for pt in zip(*loc[::-1]):
-            cy = pt[1] + h // 2
-            cx = pt[0] + w // 2
-            if not ccl_mask[cy, cx]:
-                template_area_px = np.count_nonzero(template)
-                area_nm2 = template_area_px * area_conversion
-                d = 2 * np.sqrt(area_nm2 / np.pi)
-                surface_area = np.pi * d**2
-                ncc_areas_nm2.append(area_nm2)
-                ncc_grain_sizes.append(d)
-                ncc_surface_areas.append(surface_area)
-                ncc_matches.append(pt)
+            if diameter_nm < 10:
+                primary_diameters.append(diameter_nm)
+                primary_areas.append(area_nm2)
+            else:
+                secondary_diameters.append(diameter_nm)
+                secondary_areas.append(area_nm2)
 
-    # === 6. Summary Calculation ===
-    all_areas_nm2 = ccl_areas_nm2 + ncc_areas_nm2
-    grain_sizes_nm = ccl_grain_sizes + ncc_grain_sizes
-    spherical_surface_areas = ccl_surface_areas + ncc_surface_areas
+            # Calculate size ratio (Secondary / Primary)
+            if len(primary_diameters) > 0:
+                size_ratio = diameter_nm / primary_diameters[-1] if len(primary_diameters) > 0 else 1
+                size_ratios.append(size_ratio)
 
-    total_surface_area_nm2 = np.sum(spherical_surface_areas)
-    effective_surface_area_per_nm2 = total_surface_area_nm2 / total_area_image_nm2
-    num_particles = len(all_areas_nm2)
-    avg_grain_size_nm = np.mean(grain_sizes_nm)
-    mean_area_nm2 = np.mean(all_areas_nm2)
+    # --- Calculate Porosity Ratio ---
+    total_pore_area = np.sum(all_pore_areas_nm2)
+    pore_area_pct = (total_pore_area / total_area_image_nm2) * 100
 
-    # === 7. Display Summary Table ===
-    summary = {
-        "Total Particles": num_particles,
-        "CCL Particles": len(ccl_areas_nm2),
-        "NCC Particles": len(ncc_areas_nm2),
-        "Average Grain Size (nm)": avg_grain_size_nm,
-        "Mean Particle Area (nm²)": mean_area_nm2,
-        "Total Surface Area (nm²)": total_surface_area_nm2,
-        "Effective Surface Area per nm²": effective_surface_area_per_nm2
-    }
+    # --- Pore Area and Size Ratio Histogram ---
+    st.subheader("📊 Pore Area and Size Ratio Histogram")
+    st.plotly_chart(
+        px.histogram(
+            x=all_pore_areas_nm2,
+            nbins=20,
+            labels={"x": "Pore Area (nm²)", "y": "Count"},
+            title="Pore Area Distribution"
+        ).update_traces(marker_color="steelblue"),
+        use_container_width=True
+    )
 
-    st.subheader("📊 Pt Particle Summary")
-    df_summary = pd.DataFrame(summary, index=["Result"])
-    st.dataframe(df_summary)
+    st.subheader("📊 Pore Size Ratio Histogram")
+    st.plotly_chart(
+        px.histogram(
+            x=size_ratios,
+            nbins=20,
+            labels={"x": "Size Ratio (Secondary / Primary)", "y": "Count"},
+            title="Pore Size Ratio Distribution"
+        ).update_traces(marker_color="orange"),
+        use_container_width=True
+    )
 
-    # Store Pt particle information for next page
-    st.session_state.pt_props = props
-    st.session_state.img_cleaned = img_cleaned
-    st.session_state.ccl_mask = ccl_mask
-    st.session_state.ncc_matches = ncc_matches
-    st.session_state.ccl_areas_nm2 = ccl_areas_nm2
-    st.session_state.ncc_areas_nm2 = ncc_areas_nm2
-    st.session_state.ccl_grain_sizes = ccl_grain_sizes
-    st.session_state.ncc_grain_sizes = ncc_grain_sizes
-    st.session_state.ccl_surface_areas = ccl_surface_areas
-    st.session_state.ncc_surface_areas = ncc_surface_areas
+    # --- Pore Detection Image ---
+    st.subheader("🔍 Pore Detection Image")
+    st.image(porosity_mask * 255, caption="Porosity Mask", use_column_width=True)
 
-    st.success("✅ Pt particle analysis completed. Proceed to the next page to view heatmap and distributions.")
+    # --- Show Summary Information ---
+    st.write(f"Total Pore Area: {total_pore_area:.2f} nm²")
+    st.write(f"Total Image Area: {total_area_image_nm2:.2f} nm²")
+    st.write(f"Porosity Ratio: {pore_area_pct:.2f}%")
+
+    # Store porosity information in session state for next page
+    st.session_state.pore_areas_nm2 = all_pore_areas_nm2
+    st.session_state.pore_detection_img = porosity_mask * 255
+    st.session_state.porosity_ratio = pore_area_pct
+
+    st.success("✅ Porosity analysis completed. Proceed to the next page to analyze Pt particles.")
 
 
 # User Guide
