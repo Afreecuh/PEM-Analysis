@@ -52,11 +52,11 @@ def update_coords(click_x, click_y):
     else:
         st.warning("⚠️ Two points already marked. Please input the actual scale length!")
 
-# **Display image and allow user to annotate scale**
+# **Plot Image with Annotations**
 def plot_image_with_annotations():
-    """Display image and allow user to mark scale range"""
+    """Display image and allow user to mark scale range."""
     image = st.session_state.image
-    fig = px.imshow(np.array(image))
+    fig = px.imshow(np.array(image), color_continuous_scale='gray')  # 強制使用灰階顯示圖像
 
     # **Add annotation points**
     for coord in st.session_state.scale_coords:
@@ -97,71 +97,97 @@ def handle_scale_annotation():
 # In[ ]:
 
 
-# **Page 2: Porosity Analysis**
+# **Page 2: Porosity Analysis (孔隙分析)**
 def analyze_porosity_page():
     inject_ga()
-    st.title("🧪 Porosity Analysis")
+    st.title("🔬 Porosity Analysis")
 
-    if st.session_state.image is None or st.session_state.pixel_to_um is None:
-        st.error("⚠️ Please upload an image and set the scale first!")
+    # Check if image is available
+    if st.session_state.image is None:
+        st.error("⚠️ Please upload an image first!")
         return
 
+    # Preprocess the image for porosity analysis
     image_np = np.array(st.session_state.image.convert("L"))
 
-    # === 1. Multi-Otsu Segmentation for Porosity Layer ===
-    thresholds = threshold_multiotsu(image_np, classes=4)
+    # === Step 1: Preprocess Image: Apply Threshold for Porosity ===
+    thresholds = threshold_multiotsu(image_np, classes=4)  # Multi-Otsu segmentation
     segmented = np.digitize(image_np, bins=thresholds)
+    porosity_mask = (segmented == 0).astype(np.uint8)  # Assume porosity is the darkest region
 
-    # === 2. Extract Porosity Layer ===
-    porosity_mask = (segmented == 0).astype(np.uint8)
-    labeled_porosity = label(porosity_mask)
-    props = regionprops(labeled_porosity)
+    # === Step 2: Label Connected Components ===
+    labeled = label(porosity_mask)
+    props = regionprops(labeled)
 
-    # === 3. Calculate Porosity Statistics ===
-    porosity_area_nm2 = []
+    # === Step 3: Analyze Detected Pores (Area and Size) ===
+    pore_areas_nm2 = []
+    primary_diameters = []
+    secondary_diameters = []
     for region in props:
-        area_nm2 = region.area * (st.session_state.pixel_to_um ** 2)
-        porosity_area_nm2.append(area_nm2)
+        if region.area > 10:  # Filter out small areas
+            diameter_px = 2 * np.sqrt(region.area / np.pi)
+            diameter_nm = diameter_px * st.session_state.pixel_to_um * 1000  # Convert to nm
+            area_nm2 = region.area * (st.session_state.pixel_to_um ** 2) * 1000 ** 2  # Convert to nm²
+            pore_areas_nm2.append(area_nm2)
 
-    total_porosity_area = np.sum(porosity_area_nm2)
-    image_h, image_w = image_np.shape
-    total_area_image_nm2 = image_h * image_w * (st.session_state.pixel_to_um ** 2)
+            if diameter_nm < 10:
+                primary_diameters.append(diameter_nm)
+            else:
+                secondary_diameters.append(diameter_nm)
 
-    porosity_ratio = (total_porosity_area / total_area_image_nm2) * 100
+    # === Step 4: Plot Histograms for Pore Area and Diameter ===
+    st.subheader("📊 Pore Area and Size Ratio Histogram")
+    st.plotly_chart(
+        px.histogram(
+            x=pore_areas_nm2,
+            nbins=20,
+            labels={"x": "Pore Area (nm²)", "y": "Count"},
+            title="Pore Area Distribution"
+        ).update_traces(marker_color="steelblue"),
+        use_container_width=True
+    )
 
-    # === 4. Display Porosity Information ===
-    st.subheader("📊 Porosity Analysis")
-    st.write(f"Total Porosity Area: {total_porosity_area:.2f} µm²")
-    st.write(f"Total Image Area: {total_area_image_nm2:.2f} µm²")
-    st.write(f"Porosity Ratio: {porosity_ratio:.2f}%")
+    st.subheader("📊 Pore Diameter Distribution Histogram")
+    st.plotly_chart(
+        px.histogram(
+            x=primary_diameters + secondary_diameters,
+            nbins=20,
+            labels={"x": "Pore Diameter (nm)", "y": "Count"},
+            title="Pore Diameter Distribution"
+        ).update_traces(marker_color="orange"),
+        use_container_width=True
+    )
 
-    # === 5. Display Porosity Mask ===
-    st.subheader("🔬 Porosity Mask")
-    st.image(porosity_mask * 255, caption="Porosity Binary Mask", use_column_width=True, clamp=True)
+    # === Step 5: Show Pore Detection Image ===
+    st.subheader("🔍 Pore Detection Image")
+    # Draw contours of the detected pores
+    overlay = cv2.cvtColor(image_np, cv2.COLOR_GRAY2BGR)
+    for region in props:
+        if region.area > 10:
+            coords = region.coords
+            mask = np.zeros_like(porosity_mask, dtype=np.uint8)
+            mask[tuple(zip(*coords))] = 255
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(overlay, contours, -1, (0, 255, 0), 1)  # Green contours
 
-    # === 6. Visualize Segmentation and Porosity Mask ===
-    fig, ax = plt.subplots(figsize=(6, 6))
-    ax.imshow(segmented, cmap="gray")
-    ax.set_title("Multi-Otsu Segmentation - Porosity Layer")
-    ax.axis("off")
-    st.pyplot(fig)
+    st.image(overlay, caption="Detected Pores (Green Contours)", use_column_width=True)
 
-    # Store Porosity Layer info for Page 3
-    st.session_state.porosity_mask = porosity_mask
-    st.session_state.porosity_area_nm2 = porosity_area_nm2
-    st.session_state.porosity_ratio = porosity_ratio
-    st.session_state.porosity_props = props
+    # Save relevant data to session for further use (e.g., summary on the next page)
+    st.session_state.pore_areas_nm2 = pore_areas_nm2
+    st.session_state.primary_diameters = primary_diameters
+    st.session_state.secondary_diameters = secondary_diameters
+    st.session_state.pore_detection_img = overlay
 
-    st.success("✅ Porosity analysis completed. Proceed to the next page to view Pt particle analysis and heatmap.")
+    st.success("✅ Porosity analysis completed. Proceed to the next page to analyze Pt particles.")
 
 
 # In[ ]:
 
 
-# **Page 3: Pt Particle Analysis with CCL + NCC + Heatmap**
+# **Page 3: Pt Particle Analysis (CCL + NCC + Heatmap)**
 def analyze_pt_particles_page():
     inject_ga()
-    st.title("⚙️ Pt Particle Analysis with CCL + NCC")
+    st.title("⚙️ Pt Particle Analysis with CCL + NCC + Heatmap")
 
     if st.session_state.image is None or st.session_state.pixel_to_um is None:
         st.error("⚠️ Please upload an image and set the scale first!")
@@ -275,7 +301,7 @@ def analyze_pt_particles_page():
     df_summary = pd.DataFrame(summary, index=["Result"])
     st.dataframe(df_summary)
 
-    # ✅ Store data for use in Page 4
+    # Store data for use in Page 4
     st.session_state.pt_props = props
     st.session_state.img_cleaned = img_cleaned
     st.session_state.ccl_mask = ccl_mask
@@ -606,7 +632,9 @@ def upload_and_mark_scale():
     uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg", "tif", "tiff"], key="image_upload")
 
     if uploaded_file:
-        st.session_state.image = Image.open(uploaded_file)
+        # 讀取圖片並確保其是灰階模式
+        image = Image.open(uploaded_file).convert("L")  # 強制轉換為灰階模式
+        st.session_state.image = image  # 存儲圖片至 session_state
         st.success("✅ Image uploaded successfully! Please mark the scale.")
 
         st.write("Manually input two coordinate points (X and Y):")
