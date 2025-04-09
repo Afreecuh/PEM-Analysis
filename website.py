@@ -97,6 +97,17 @@ def handle_scale_annotation():
 # In[ ]:
 
 
+# === 2. Preprocess Image: Crop Scale Bar ===
+def auto_crop_scale_bar(img, threshold=80):
+    """
+    Crop the image by removing the scale bar region if detected at the bottom.
+    """
+    h, _ = img.shape
+    if np.mean(img[int(h * 0.9):]) < threshold:  # Check bottom region for scale bar
+        black_row = np.where(np.mean(img, axis=1) < threshold)[0][0]  # Find first row of black region
+        return img[:black_row, :]
+    return img
+
 # **Page 2: Porosity Analysis (孔隙分析)**
 def analyze_porosity_page():
     inject_ga()
@@ -150,6 +161,7 @@ def analyze_porosity_page():
     total_pore_area = np.sum(all_pore_areas_nm2)
     pore_area_pct = (total_pore_area / total_area_image_nm2) * 100
 
+    # --- Pore Area and Size Ratio Histogram ---
     st.subheader("📊 Pore Area and Size Ratio Histogram")
     st.plotly_chart(
         px.histogram(
@@ -161,9 +173,11 @@ def analyze_porosity_page():
         use_container_width=True
     )
 
+    # --- Pore Detection Image ---
     st.subheader("🔍 Pore Detection Image")
     st.image(porosity_mask * 255, caption="Porosity Mask", use_column_width=True)
 
+    # --- Show Summary Information ---
     st.write(f"Total Pore Area: {total_pore_area:.2f} nm²")
     st.write(f"Total Image Area: {total_area_image_nm2:.2f} nm²")
     st.write(f"Porosity Ratio: {pore_area_pct:.2f}%")
