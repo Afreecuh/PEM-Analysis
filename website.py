@@ -603,7 +603,7 @@ def upload_and_mark_scale():
     with col_img:
         st.image("cover_image.png", use_column_width=True)
 
-    uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"], key="image_upload")
+    uploaded_file = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg", "tif", "tiff"], key="image_upload")
 
     if uploaded_file:
         st.session_state.image = Image.open(uploaded_file)
