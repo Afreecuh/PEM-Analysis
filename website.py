@@ -23,7 +23,7 @@ from datetime import datetime
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
-from openai import OpenAI
+import openai
 
 openai.api_key = st.secrets["openai"]["api_key"]
 
