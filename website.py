@@ -88,224 +88,198 @@ def handle_scale_annotation():
 # In[ ]:
 
 
-from skimage.measure import regionprops, label
-
-def otsu_segmentation():
+def analyze_pt_particles_page():
     inject_ga()
-    st.title("Multi-Otsu Thresholding & SEM Analysis")
-
-    num_classes = 5  
+    st.title("🪙 Pt Particle Analysis with CCL + NCC")
 
     if st.session_state.image is None or st.session_state.pixel_to_um is None:
         st.error("⚠️ Please upload an image and set the scale first!")
         return
 
-    image_np = np.array(st.session_state.image.convert("L"))
-    image_eq = cv2.equalizeHist(image_np)
+    # 1. Image Preparation
+    image = np.array(st.session_state.image.convert("L"))
+    height, width = image.shape
+    image_eq = cv2.equalizeHist(image)
     image_blur = cv2.GaussianBlur(image_eq, (5, 5), 0)
 
-    # Segmentation
-    thresholds = threshold_multiotsu(image_blur, classes=num_classes)
-    segmented_image = np.digitize(image_blur, bins=thresholds)
+    # 2. FFT Background Removal
+    f = fft2(image_blur)
+    fshift = fftshift(f)
+    crow, ccol = height // 2, width // 2
+    fshift[crow-10:crow+10, ccol-10:ccol+10] *= 0.1
+    img_cleaned = np.abs(ifft2(ifftshift(fshift)))
+    img_cleaned = exposure.rescale_intensity(img_cleaned, in_range='image', out_range=(0, 255)).astype(np.uint8)
 
-    # Show raw segmented preview
-    st.image(segmented_image * int(255 / num_classes), caption="Segmented Classes Preview", clamp=True)
+    # 3. Multi-Otsu Segmentation
+    thresholds = threshold_multiotsu(img_cleaned, classes=4)
+    regions = np.digitize(img_cleaned, bins=thresholds)
 
-    # Always rebuild the class masks
-    st.session_state.class_masks = [(segmented_image == i).astype(np.uint8) * 255 for i in range(num_classes)]
+    # 4. Particle Detection - CCL (Brightest Layer)
+    layer = 3
+    particles_mask = (regions == layer)
+    particles_mask = remove_small_objects(particles_mask, min_size=10)
+    labeled_particles = label(particles_mask)
+    props = regionprops(labeled_particles)
 
-    if "selected_layer_index" not in st.session_state:
-        st.session_state.selected_layer_index = 0
+    nm_per_pixel = st.session_state.pixel_to_um * 1000
+    area_conversion = nm_per_pixel ** 2
+    total_area_image_nm2 = height * width * area_conversion
 
-    labeled_masks = [label(mask) for mask in st.session_state.class_masks]
-    class_properties = [regionprops(labeled_mask) for labeled_mask in labeled_masks]
+    ccl_areas, ccl_sizes, ccl_surfs = [], [], []
+    ccl_mask = np.zeros_like(particles_mask, dtype=np.uint8)
 
-    num_regions = [len(props) for props in class_properties]
-    avg_area_per_region = [
-        np.mean([prop.area for prop in props]) if len(props) > 0 else 0 
-        for props in class_properties
-    ]
+    for p in props:
+        area_nm2 = p.area * area_conversion
+        if area_nm2 > 100:
+            d = 2 * np.sqrt(area_nm2 / np.pi)
+            sa = np.pi * d**2
+            ccl_areas.append(area_nm2)
+            ccl_sizes.append(d)
+            ccl_surfs.append(sa)
+            coords = p.coords
+            ccl_mask[tuple(zip(*coords))] = 1
 
-    pixel_areas = [(segmented_image == i).sum() for i in range(num_classes)]
-    total_area = sum(pixel_areas)
-    real_physical_sizes = [area * (st.session_state.pixel_to_um ** 2) for area in pixel_areas]
-    area_percentages = [(size / total_area) * 100 for size in real_physical_sizes]
+    # 5. NCC Matching (for small particles)
+    best_region = max(props, key=lambda p: (4 * np.pi * p.area / (p.perimeter**2)) if p.perimeter > 0 else 0, default=None)
+    ncc_areas, ncc_sizes, ncc_surfs, ncc_matches = [], [], [], []
 
-    layer_labels = [
-        "Porosity (Holes, Cracks)", 
-        "Pollutants, Sediments", 
-        "Matrix (Base Material)", 
-        "Metallic Particles", 
-        "High-Reflectivity Contaminants"
-    ]
+    if best_region:
+        minr, minc, maxr, maxc = best_region.bbox
+        template = img_cleaned[minr:maxr, minc:maxc]
+        result = cv2.matchTemplate(img_cleaned, template, cv2.TM_CCOEFF_NORMED)
+        threshold_ncc = 0.6
+        loc = np.where(result >= threshold_ncc)
+        h, w = template.shape
 
-    df_analysis = pd.DataFrame({
-        "Layer": layer_labels,
-        "Pixel Area": pixel_areas,
-        "Physical Area (µm²)": real_physical_sizes,
-        "Area Percentage (%)": area_percentages,
-        "Number of Regions": num_regions,
-        "Average Area per Region (px)": avg_area_per_region
-    })
+        for pt in zip(*loc[::-1]):
+            cy, cx = pt[1] + h // 2, pt[0] + w // 2
+            if not ccl_mask[cy, cx]:
+                ncc_matches.append(pt)
+                template_area = np.count_nonzero(template)
+                area_nm2 = template_area * area_conversion
+                d = 2 * np.sqrt(area_nm2 / np.pi)
+                sa = np.pi * d**2
+                ncc_areas.append(area_nm2)
+                ncc_sizes.append(d)
+                ncc_surfs.append(sa)
 
-    st.dataframe(df_analysis)
+    # 6. Heatmap
+    grid_rows, grid_cols = 10, 10
+    cell_h, cell_w = height // grid_rows, width // grid_cols
+    heatmap = np.zeros((grid_rows, grid_cols), dtype=int)
 
-    fig_bar = px.bar(df_analysis, x="Layer", y="Physical Area (µm²)", title="Physical Area of Each Layer")
-    fig_bar.update_traces(customdata=layer_labels, hoverinfo="x+y")
-    st.plotly_chart(fig_bar, use_container_width=True)
+    for p in props:
+        if p.area * area_conversion > 100:
+            cy, cx = p.centroid
+            r = min(int(cy // cell_h), grid_rows - 1)
+            c = min(int(cx // cell_w), grid_cols - 1)
+            heatmap[r, c] += 1
 
-    st.write("### Layer Visualization")
-    selected_layer = st.selectbox(
-        "Select Layer to Visualize", 
-        layer_labels, 
-        index=st.session_state.get("selected_layer_index", 0),
-        key="layer_selection"
-    )
-    if selected_layer:
-        st.session_state.selected_layer_index = layer_labels.index(selected_layer)
+    for pt in ncc_matches:
+        cy, cx = pt[1] + h // 2, pt[0] + w // 2
+        r = min(int(cy // cell_h), grid_rows - 1)
+        c = min(int(cx // cell_w), grid_cols - 1)
+        heatmap[r, c] += 1
 
-    fig, ax = plt.subplots(figsize=(6, 6))
-    ax.imshow(st.session_state.class_masks[st.session_state.selected_layer_index], cmap="gray")
-    ax.set_title(f"{selected_layer} (Layer {st.session_state.selected_layer_index})")
-    ax.axis("off")
-    st.pyplot(fig)
+    heatmap_std = np.std(heatmap)
 
-    fig_pie = px.pie(df_analysis, names="Layer", values="Area Percentage (%)", title="Area Distribution Across Layers")
-    st.plotly_chart(fig_pie, use_container_width=True)
+    # 7. Results Summary
+    all_areas = ccl_areas + ncc_areas
+    all_sizes = ccl_sizes + ncc_sizes
+    all_surfs = ccl_surfs + ncc_surfs
 
-    porosity_ratio = (pixel_areas[0] / total_area) * 100 if total_area > 0 else 0
-    catalyst_areas = sum(pixel_areas[2:4]) if len(pixel_areas) > 3 else 0
-    catalyst_percentage = (catalyst_areas / total_area) * 100 if total_area > 0 else 0
-    agglomeration_ratio = (pixel_areas[3] / catalyst_areas) * 100 if catalyst_areas > 0 else 0
-    oxidation_ratio = (pixel_areas[4] / total_area) * 100 if len(pixel_areas) > 4 else 0
-
-    st.write(f"📌 Porosity Ratio: {porosity_ratio:.2f}%")
-    st.write(f"📌 Catalyst Coverage: {catalyst_percentage:.2f}%")
-    st.write(f"📌 Agglomeration Ratio: {agglomeration_ratio:.2f}%")
-    st.write(f"📌 Oxidation/Impurity Coverage: {oxidation_ratio:.2f}%")
-
-    st.session_state.analysis_df = df_analysis
-    st.session_state.extra_metrics = {
-        "Porosity Ratio": porosity_ratio,
-        "Catalyst Coverage": catalyst_percentage,
-        "Agglomeration Ratio": agglomeration_ratio,
-        "Oxidation/Impurity Coverage": oxidation_ratio,
+    st.session_state.pt_summary = {
+        "Number of Particles": len(all_areas),
+        "CCL Particles": len(ccl_areas),
+        "NCC Particles": len(ncc_areas),
+        "Avg Grain Size (nm)": np.mean(all_sizes) if all_sizes else 0,
+        "Total Surface Area (nm²)": np.sum(all_surfs),
+        "Effective SA per nm²": np.sum(all_surfs) / total_area_image_nm2,
+        "Image Area (nm²)": total_area_image_nm2,
+        "Mean Area (nm²)": np.mean(all_areas) if all_areas else 0,
+        "Heatmap Std Dev": heatmap_std
     }
+
+    st.session_state.pt_particle_areas = all_areas
+    st.session_state.pt_particle_sizes = all_sizes
+    st.session_state.pt_heatmap = heatmap
+    st.session_state.pt_overlay_info = (props, img_cleaned, ncc_matches, h, w)
+
+    st.success("✅ Pt particle analysis completed. Proceed to the next page to view heatmap and distributions.")
 
 
 # In[ ]:
 
 
-import cv2
-import numpy as np
-import streamlit as st
-import plotly.express as px
-from skimage.filters import threshold_multiotsu
-from PIL import Image
+def ncc_match_and_overlay_page():
+    inject_ga()
+    st.title("🔬 Pt Particle Visualization and Heatmap")
 
-# **Set number of Multi-Otsu classes to 4**
-NUM_CLASSES = 4  
-
-# **Calculate shape features**
-def calculate_shape_features(contour):
-    area = cv2.contourArea(contour)
-    perimeter = cv2.arcLength(contour, True)
-    x, y, w, h = cv2.boundingRect(contour)
-    circularity = (4 * np.pi * area) / (perimeter ** 2) if perimeter > 0 else 0
-    aspect_ratio = w / h if h > 0 else 0
-    hull = cv2.convexHull(contour)
-    hull_area = cv2.contourArea(hull)
-    solidity = area / hull_area if hull_area > 0 else 0
-    return circularity, aspect_ratio, solidity
-
-# **Classify particle shape**
-def classify_shape(circularity, aspect_ratio, solidity):
-    if circularity > 0.8 and 0.9 < aspect_ratio < 1.1:
-        return "Circle"
-    elif aspect_ratio > 1.5:
-        return "Ellipse"
-    elif 0.95 <= aspect_ratio <= 1.05 and solidity > 0.95:
-        return "Square"
-    elif solidity < 0.9:
-        return "Irregular"
-    else:
-        return "Polygon"
-
-# **Analyze particles**
-def analyze_particles(image):
-    img_gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
-    img_eq = cv2.equalizeHist(img_gray)
-    img_blur = cv2.GaussianBlur(img_eq, (5, 5), 0)
-
-    thresholds = threshold_multiotsu(img_blur, classes=NUM_CLASSES)
-    segmented = np.digitize(img_blur, bins=thresholds)
-
-    binary = (segmented == 2).astype(np.uint8) * 255
-    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    circularities = []
-    shape_labels = []
-
-    img_with_contours = cv2.cvtColor(img_gray, cv2.COLOR_GRAY2BGR)
-
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if area > 50:  # **Filter small particles**
-            circularity, aspect_ratio, solidity = calculate_shape_features(contour)
-            shape = classify_shape(circularity, aspect_ratio, solidity)
-            circularities.append(circularity)
-            shape_labels.append(shape)
-            cv2.drawContours(img_with_contours, [contour], -1, (0, 255, 255), 2)
-
-    return circularities, shape_labels, binary, img_with_contours
-
-# **Streamlit interface**
-def analyze_particles_page():
-    st.title("🔬 SEM Particle Shape Analysis")
-
-    if st.session_state.image is None:
-        st.error("⚠️ Please upload an image and set the scale first!")
+    if "pt_overlay_info" not in st.session_state:
+        st.error("⚠️ Please complete the Pt particle analysis first!")
         return
 
-    image = st.session_state.image
-    circularities, shape_labels, binary_image, img_with_contours = analyze_particles(image)
+    props, img_cleaned, ncc_matches, h, w = st.session_state.pt_overlay_info
 
-    shape_counts = {shape: shape_labels.count(shape) for shape in set(shape_labels)}
-    st.session_state.shape_analysis = shape_counts
-    st.session_state.circularity_data = circularities
+    # --- Draw overlay image ---
+    contour_img = cv2.cvtColor(img_cleaned, cv2.COLOR_GRAY2BGR)
 
-    st.subheader("📊 Circularity Distribution")
-    if circularities:
-        fig_circularity = px.histogram(
-            x=circularities, nbins=20, range_x=[0, 1], 
-            labels={'x': 'Circularity Score', 'y': 'Frequency'},
-            title="Circularity Distribution",
-            opacity=0.7
-        )
-        fig_circularity.update_traces(marker_color='blue')
-        st.plotly_chart(fig_circularity, use_container_width=True)
+    nm_per_pixel = st.session_state.pixel_to_um * 1000
+    area_conversion = nm_per_pixel ** 2
 
-        with st.expander("🔍 Show Processed Binary Image"):
-            st.image(binary_image, caption="Binary Segmentation (Used for Circularity Calculation)", use_column_width=True, clamp=True)
+    for p in props:
+        if p.area * area_conversion > 100:
+            mask = np.zeros_like(img_cleaned, dtype=np.uint8)
+            mask[tuple(zip(*p.coords))] = 255
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(contour_img, contours, -1, (0, 255, 0), 1)  # Green
 
-    else:
-        st.warning("⚠️ No particles detected")
+    for pt in ncc_matches:
+        cv2.rectangle(contour_img, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), 1)  # Red
 
-    st.subheader("📊 Shape Analysis")
-    if shape_labels:
-        fig_shape = px.histogram(
-            x=shape_labels, 
-            labels={'x': 'Shape', 'y': 'Count'},
-            title="Shape Analysis",
-            opacity=0.7
-        )
-        fig_shape.update_traces(marker_color='green')
-        st.plotly_chart(fig_shape, use_container_width=True)
+    # --- Display overlay ---
+    st.image(cv2.cvtColor(contour_img, cv2.COLOR_BGR2RGB), caption="Detected Pt Particles (Green = CCL, Red = NCC)", use_column_width=True)
 
-        with st.expander("🔍 Show Shape Contour Image"):
-            st.image(img_with_contours, caption="Segmented Image with Contours", use_column_width=True)
-    else:
-        st.warning("⚠️ No particles detected")
+    # --- Area Histogram ---
+    st.subheader("📊 Pt Particle Area Distribution (nm²)")
+    st.plotly_chart(
+        px.histogram(
+            x=st.session_state.pt_particle_areas,
+            nbins=20,
+            labels={"x": "Area (nm²)", "y": "Count"},
+            title="Area Distribution of Detected Pt Particles",
+            opacity=0.7,
+        ).update_traces(marker_color="steelblue"),
+        use_container_width=True
+    )
+
+    # --- Size Histogram ---
+    st.subheader("📊 Pt Particle Diameter Distribution (nm)")
+    st.plotly_chart(
+        px.histogram(
+            x=st.session_state.pt_particle_sizes,
+            nbins=20,
+            labels={"x": "Diameter (nm)", "y": "Count"},
+            title="Grain Size Distribution",
+            opacity=0.7,
+        ).update_traces(marker_color="purple"),
+        use_container_width=True
+    )
+
+    # --- Heatmap ---
+    st.subheader("🔥 Heatmap of Pt Particle Distribution")
+    heatmap = st.session_state.pt_heatmap
+
+    fig = px.imshow(
+        heatmap, 
+        color_continuous_scale="inferno", 
+        labels={"color": "Number of Particles"},
+        title="Particle Count Per Grid Cell"
+    )
+    fig.update_layout(xaxis_title="Grid Column", yaxis_title="Grid Row")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.info(f"ℹ️ Heatmap Standard Deviation: **{st.session_state.pt_summary['Heatmap Std Dev']:.2f}**")
 
 
 # User Guide
@@ -325,13 +299,13 @@ def show_user_guide():
         - Click **Next** to proceed.
         """,
         2: """
-        ### **Page 2: Multi-Otsu Segmentation**
-        - The system performs **Multi-Otsu thresholding** to segment different material layers.
-        - You will see **area analysis** results including:
-          - Physical area (µm²)
-          - Percentage of each layer
-          - Porosity & Catalyst coverage
-        - Click **Next** to explore 3D visualization.
+        ### **Page 2: Pt Particle Analysis**
+        - The system performs **background cleaning (FFT)** and **Multi-Otsu segmentation**.
+        - It selects the brightest layer to detect **Pt particles** using:
+          - CCL (Connected Component Labeling) for larger particles
+          - NCC (Normalized Cross-Correlation) for matching smaller ones
+        - Calculates particle count, grain size, total surface area, and effective surface area.
+        - Click **Next** to visualize distributions and heatmap.
         """,
         3: """
         ### **Page 3: 3D Intensity Viewer**
@@ -339,25 +313,27 @@ def show_user_guide():
         - Each pixel's **brightness determines its depth and color**.
         - Adjust **Gaussian smoothing (σ)** to reduce noise.
         - Explore internal topography layer by layer.
-        - Click **Next** to analyze particle shape.
+        - Click **Next** to analyze particle distribution.
         """,
         4: """
-        ### **Page 4: Shape & Circularity Analysis**
-        - Analyze **particle shapes** using contour detection.
-        - View the **circularity distribution** of particles.
-        - Identify shape categories like:
-          - Circle / Ellipse / Square / Irregular / Polygon
-        - Preview segmentation masks and contour overlays.
-        - Click **Next** to generate a final report.
+        ### **Page 4: Particle Distribution & Heatmap**
+        - View overlay of detected particles:
+          - Green = CCL particles
+          - Red = NCC-matched small particles
+        - Histogram of:
+          - Particle area (nm²)
+          - Grain size (diameter in nm)
+        - Heatmap shows particle density per region.
+        - Summary includes **standard deviation of particle distribution**.
         """,
         5: """
         ### **Page 5: Download Report**
         - Click **"Generate PDF Report"** to create a detailed analysis report.
         - The report includes:
           - Scale information
-          - Multi-Otsu segmentation analysis
-          - 3D intensity visualization
-          - Particle shape and circularity analysis
+          - Pt particle statistics (count, size, surface area)
+          - Heatmap summary
+          - GPT-generated expert summary
         - Click **"Download PDF"** to save it to your device.
         """
     }
@@ -369,175 +345,90 @@ def show_user_guide():
 # In[ ]:
 
 
-import io
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
-from datetime import datetime
-from openai import OpenAI
-import streamlit as st
-
 def generate_pdf():
-    # ✅ 安全地從 secrets 讀取 OpenAI API Key
     client = OpenAI(api_key=st.secrets["openai"]["api_key"])
-
-    def query_gpt_for_insights(layer_data, extra_metrics):
-        prompt = f"""
-        Based on the following SEM analysis data:
-
-        {layer_data}
-
-        Additional metrics:
-        {extra_metrics}
-
-        Please generate:
-        1. A one-sentence comment for each layer describing its possible implication.
-        2. An overall short expert commentary on this catalyst's performance and structure based on the SEM results.
-        """
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return f"[Error calling ChatGPT: {e}]"
-
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
-    # Title
     pdf.setFont("Helvetica-Bold", 18)
-    pdf.drawCentredString(width / 2, 770, "SEM Image Analysis Report")
+    pdf.drawCentredString(width / 2, 770, "Pt Particle Analysis Report")
     pdf.setFont("Helvetica", 12)
     pdf.drawCentredString(width / 2, 750, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     pdf.line(50, 740, 550, 740)
 
-    # SEM Image
+    # === SEM image preview ===
     if st.session_state.image:
         img_buffer = io.BytesIO()
         st.session_state.image.save(img_buffer, format="PNG")
         img_reader = ImageReader(img_buffer)
         pdf.drawImage(img_reader, 100, 520, width=400, height=200)
 
-    y_offset = 500
+    y = 500
     pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, y_offset, "Scale Information")
+    pdf.drawString(50, y, "Scale Information")
+    y -= 20
     pdf.setFont("Helvetica", 12)
-    pixel_to_um = st.session_state.get('pixel_to_um', None)
-    y_offset -= 20
-    pdf.drawString(50, y_offset, f"Pixel to µm Ratio: {pixel_to_um:.6f} µm/px" if pixel_to_um else "⚠️ No scale information available.")
-    y_offset -= 10
-    pdf.line(50, y_offset, 550, y_offset)
-    y_offset -= 20
-
-    # Multi-Otsu Segmentation
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, y_offset, "Multi-Otsu Segmentation Analysis")
-    pdf.setFont("Helvetica", 12)
-    y_offset -= 20
-
-    segmentation_data = st.session_state.get("analysis_df", None)
-    extra_metrics = st.session_state.get("extra_metrics", {})
-    layer_lines = []
-    extra_lines = []
-
-    if segmentation_data is not None:
-        for _, row in segmentation_data.iterrows():
-            line = f"{row['Layer']}: {row['Physical Area (µm²)']:.2f} µm² ({row['Area Percentage (%)']:.2f}%)"
-            pdf.drawString(50, y_offset, line)
-            layer_lines.append(line)
-            y_offset -= 15
+    px_um = st.session_state.get("pixel_to_um", None)
+    if px_um:
+        pdf.drawString(50, y, f"Pixel to µm Ratio: {px_um:.6f} µm/px")
     else:
-        pdf.drawString(50, y_offset, "⚠️ No segmentation data available.")
-        y_offset -= 15
+        pdf.drawString(50, y, "⚠️ No scale information.")
+    y -= 10
+    pdf.line(50, y, 550, y)
+    y -= 30
 
-    y_offset -= 5
-    pdf.line(50, y_offset, 550, y_offset)
-    y_offset -= 30
-
-    # Additional Metrics
+    # === Summary Data ===
+    pt_summary = st.session_state.get("pt_summary", {})
+    summary_lines = []
     pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, y_offset, "Additional Metrics")
+    pdf.drawString(50, y, "Pt Particle Summary")
+    y -= 20
     pdf.setFont("Helvetica", 12)
-    y_offset -= 20
+    for key, value in pt_summary.items():
+        if isinstance(value, (float, int)):
+            line = f"{key}: {value:.2f}" if isinstance(value, float) else f"{key}: {value}"
+            pdf.drawString(50, y, line)
+            summary_lines.append(line)
+            y -= 15
 
-    for metric, value in extra_metrics.items():
-        if value is not None:
-            line = f"{metric}: {value:.2f}%"
-            pdf.drawString(50, y_offset, line)
-            extra_lines.append(line)
-            y_offset -= 15
+    y -= 5
+    pdf.line(50, y, 550, y)
+    y -= 30
 
-    y_offset -= 5
-    pdf.line(50, y_offset, 550, y_offset)
-    y_offset -= 30
-
-    # Shape Analysis
+    # === AI Commentary ===
     pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, y_offset, "Particle Shape Analysis")
-    pdf.setFont("Helvetica", 12)
-    shape_analysis = st.session_state.get("shape_analysis", {})
-    y_offset -= 20
-
-    if shape_analysis:
-        pdf.setFont("Helvetica-Bold", 12)
-        pdf.drawString(50, y_offset, "Shape Type")
-        pdf.drawString(250, y_offset, "Count")
-        y_offset -= 15
-        pdf.line(50, y_offset, 550, y_offset)
-        y_offset -= 20
-
-        pdf.setFont("Helvetica", 12)
-        for shape, count in shape_analysis.items():
-            pdf.drawString(50, y_offset, shape)
-            pdf.drawString(250, y_offset, str(count))
-            y_offset -= 15
-    else:
-        pdf.drawString(50, y_offset, "⚠️ No shape analysis data available.")
-        y_offset -= 15
-
-    y_offset -= 5
-    pdf.line(50, y_offset, 550, y_offset)
-    y_offset -= 30
-
-    # Circularity
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, y_offset, "Circularity Distribution")
-    pdf.setFont("Helvetica", 12)
-    circularity_data = st.session_state.get("circularity_data", [])
-    y_offset -= 20
-
-    if circularity_data:
-        avg_circularity = sum(circularity_data) / len(circularity_data)
-        pdf.drawString(50, y_offset, f"Average Circularity: {avg_circularity:.2f}")
-        y_offset -= 15
-    else:
-        pdf.drawString(50, y_offset, "⚠️ No circularity data available.")
-        y_offset -= 15
-
-    y_offset -= 5
-    pdf.line(50, y_offset, 550, y_offset)
-    y_offset -= 30
-
-    # === AI Commentary Block ===
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawString(50, y_offset, "AI Commentary")
-    y_offset -= 20
+    pdf.drawString(50, y, "AI Commentary")
+    y -= 20
     pdf.setFont("Helvetica", 11)
 
-    ai_response = query_gpt_for_insights("\n".join(layer_lines), "\n".join(extra_lines))
+    # GPT 調用簡評
+    prompt = f"""
+    Based on the following Pt particle analysis summary, provide:
+    1. A brief sentence explaining what each metric may indicate.
+    2. A short expert commentary on the particle distribution, surface area, and possible implications for catalytic performance.
 
-    for line in ai_response.split("\n"):
-        if y_offset < 50:
+    Summary:
+    {chr(10).join(summary_lines)}
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.6,
+        )
+        ai_comment = response.choices[0].message.content.strip()
+    except Exception as e:
+        ai_comment = f"[Error from ChatGPT: {e}]"
+
+    for line in ai_comment.split("\n"):
+        if y < 50:
             pdf.showPage()
-            y_offset = 750
+            y = 750
             pdf.setFont("Helvetica", 11)
-        pdf.drawString(50, y_offset, line.strip())
-        y_offset -= 15
+        pdf.drawString(50, y, line.strip())
+        y -= 15
 
     pdf.save()
     buffer.seek(0)
