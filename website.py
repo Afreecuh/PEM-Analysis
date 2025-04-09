@@ -463,26 +463,27 @@ def show_user_guide():
 
 
 def generate_pdf():
-    client = openai  # ✅ 正確寫法：使用 openai 套件
-
+    client = openai  # 使用 openai 原生 API
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
     pdf.setFont("Helvetica-Bold", 18)
-    pdf.drawCentredString(width / 2, 770, "Pt Particle Analysis Report")
+    pdf.drawCentredString(width / 2, 770, "SEM Analysis Report")
     pdf.setFont("Helvetica", 12)
     pdf.drawCentredString(width / 2, 750, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     pdf.line(50, 740, 550, 740)
 
-    # === SEM image preview ===
+    # === Image preview ===
     if st.session_state.image:
         img_buffer = io.BytesIO()
         st.session_state.image.save(img_buffer, format="PNG")
         img_reader = ImageReader(img_buffer)
-        pdf.drawImage(img_reader, 100, 520, width=400, height=200)
+        pdf.drawImage(img_reader, 100, 530, width=400, height=180)
 
-    y = 500
+    y = 510
+
+    # === Scale Info ===
     pdf.setFont("Helvetica-Bold", 14)
     pdf.drawString(50, y, "Scale Information")
     y -= 20
@@ -491,26 +492,59 @@ def generate_pdf():
     if px_um:
         pdf.drawString(50, y, f"Pixel to µm Ratio: {px_um:.6f} µm/px")
     else:
-        pdf.drawString(50, y, "⚠️ No scale information.")
+        pdf.drawString(50, y, "⚠️ Scale not set.")
     y -= 10
     pdf.line(50, y, 550, y)
     y -= 30
 
-    # === Summary Data ===
+    # === Porosity Summary ===
+    poro_ratio = st.session_state.get("porosity_ratio", None)
+    pore_areas = st.session_state.get("pore_areas_nm2", [])
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(50, y, "Porosity Summary")
+    y -= 20
+    pdf.setFont("Helvetica", 12)
+    if poro_ratio is not None and pore_areas:
+        primary = [a for a in pore_areas if a < (10 ** 2 * np.pi / 4)]
+        secondary = [a for a in pore_areas if a >= (10 ** 2 * np.pi / 4)]
+        avg_primary = np.mean([2 * np.sqrt(a / np.pi) for a in primary]) if primary else 0
+        avg_secondary = np.mean([2 * np.sqrt(a / np.pi) for a in secondary]) if secondary else 0
+
+        pdf.drawString(50, y, f"Porosity: {poro_ratio:.2f} %")
+        y -= 15
+        pdf.drawString(50, y, f"Primary Pores (<10 nm): {len(primary)}")
+        y -= 15
+        pdf.drawString(50, y, f"Secondary Pores (≥10 nm): {len(secondary)}")
+        y -= 15
+        pdf.drawString(50, y, f"Average Primary Diameter: {avg_primary:.2f} nm")
+        y -= 15
+        pdf.drawString(50, y, f"Average Secondary Diameter: {avg_secondary:.2f} nm")
+    else:
+        pdf.drawString(50, y, "⚠️ Porosity data not available.")
+    y -= 10
+    pdf.line(50, y, 550, y)
+    y -= 30
+
+    # === Pt Particle Summary ===
     pt_summary = st.session_state.get("pt_summary", {})
-    summary_lines = []
     pdf.setFont("Helvetica-Bold", 14)
     pdf.drawString(50, y, "Pt Particle Summary")
     y -= 20
     pdf.setFont("Helvetica", 12)
-    for key, value in pt_summary.items():
-        if isinstance(value, (float, int)):
-            line = f"{key}: {value:.2f}" if isinstance(value, float) else f"{key}: {value}"
-            pdf.drawString(50, y, line)
-            summary_lines.append(line)
+    def write_line(label, key):
+        nonlocal y
+        val = pt_summary.get(key, None)
+        if val is not None:
+            if isinstance(val, float):
+                val = f"{val:.2f}"
+            pdf.drawString(50, y, f"{label}: {val}")
             y -= 15
-
-    y -= 5
+    write_line("Total Pt Particles", "Total Particles")
+    write_line("CCL Particles", "CCL Particles")
+    write_line("NCC Particles", "NCC Particles")
+    write_line("Average Grain Size (nm)", "Average Grain Size (nm)")
+    write_line("Surface Area per nm²", "Effective Surface Area per nm²")
+    y -= 10
     pdf.line(50, y, 550, y)
     y -= 30
 
@@ -520,14 +554,15 @@ def generate_pdf():
     y -= 20
     pdf.setFont("Helvetica", 11)
 
-    # GPT 調用簡評
     prompt = f"""
-    Based on the following Pt particle analysis summary, provide:
-    1. A brief sentence explaining what each metric may indicate.
-    2. A short expert commentary on the particle distribution, surface area, and possible implications for catalytic performance.
+    Based on the following SEM analysis results, write a short expert commentary on:
+    - What the porosity and Pt particle size may imply
+    - Implications for catalyst performance or structural integrity
 
-    Summary:
-    {chr(10).join(summary_lines)}
+    Porosity: {poro_ratio:.2f if poro_ratio else 'N/A'}%
+    Pt Particles: {pt_summary.get("Total Particles", "N/A")}
+    Average Grain Size: {pt_summary.get("Average Grain Size (nm)", "N/A")} nm
+    Effective Surface Area: {pt_summary.get("Effective Surface Area per nm²", "N/A")}
     """
 
     try:
@@ -538,8 +573,7 @@ def generate_pdf():
         )
         ai_comment = response.choices[0].message.content.strip()
     except Exception as e:
-        ai_comment = f"[Error from ChatGPT: {e}]"
-
+        ai_comment = "*AI comment unavailable due to quota limit.*"
     for line in ai_comment.split("\n"):
         if y < 50:
             pdf.showPage()
