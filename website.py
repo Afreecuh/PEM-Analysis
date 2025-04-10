@@ -153,15 +153,12 @@ def analyze_porosity_page():
     area_conversion = nm_per_pixel ** 2
     total_area_image_nm2 = image_cropped.shape[0] * image_cropped.shape[1] * area_conversion
 
-    # Extract Porosity Layer (Class 0)
     porosity_mask = (segmented == 0).astype(np.uint8)
     labeled = label(porosity_mask)
     props = regionprops(labeled)
 
     primary_diameters = []
     secondary_diameters = []
-    primary_areas = []
-    secondary_areas = []
     all_pore_areas_nm2 = []
 
     for region in props:
@@ -173,12 +170,9 @@ def analyze_porosity_page():
 
             if diameter_nm < 10:
                 primary_diameters.append(diameter_nm)
-                primary_areas.append(area_nm2)
             else:
                 secondary_diameters.append(diameter_nm)
-                secondary_areas.append(area_nm2)
 
-    # --- Calculate Porosity Ratio ---
     total_pore_area = np.sum(all_pore_areas_nm2)
     pore_area_pct = (total_pore_area / total_area_image_nm2) * 100
 
@@ -186,7 +180,7 @@ def analyze_porosity_page():
     avg_secondary_size = np.mean(secondary_diameters) if secondary_diameters else 0
     rm_ratio = (avg_secondary_size / avg_primary_size) if avg_primary_size > 0 else 0
 
-    # --- Pore Detection Image with Contours ---
+    # --- Detection Image ---
     st.subheader("🔍 Pore Detection Image")
     overlay = cv2.cvtColor(image_cropped, cv2.COLOR_GRAY2BGR)
     for region in props:
@@ -198,39 +192,43 @@ def analyze_porosity_page():
             cv2.drawContours(overlay, contours, -1, (0, 255, 0), 1)
     st.image(overlay, caption="Detected Pores (Contours)", use_container_width=True)
 
-    # --- Pore Area Distribution ---
+    # --- Pore Area Histogram ---
     st.subheader("📊 Pore Area Distribution Histogram")
-    fig_area = px.histogram(
-        x=all_pore_areas_nm2,
-        nbins=20,
-        labels={"x": "Pore Area (nm²)", "y": "Count"},
-        title="Pore Area Distribution"
-    ).update_traces(marker_color="steelblue")
+    hist_area = np.histogram(all_pore_areas_nm2, bins=20)
+    area_bins = hist_area[1]
+    area_counts = hist_area[0]
+    filtered_area = [all_pore_areas_nm2[i] for i in range(len(all_pore_areas_nm2)) if np.histogram(all_pore_areas_nm2, bins=area_bins)[0][np.digitize(all_pore_areas_nm2[i], area_bins)-1] >= 3]
 
-    area_hist_data = fig_area.data[0]
-    area_x = area_hist_data.x
-    area_y = area_hist_data.y
-    mask = area_y > 10
-    fig_area.data[0].x = area_x[mask]
-    fig_area.data[0].y = area_y[mask]
-    st.plotly_chart(fig_area, use_container_width=True)
+    st.plotly_chart(
+        px.histogram(
+            x=filtered_area,
+            nbins=20,
+            labels={"x": "Pore Area (nm²)", "y": "Count"},
+            title="Pore Area Distribution (Filtered ≥3)"
+        ).update_traces(marker_color="steelblue"),
+        use_container_width=True
+    )
 
-    # --- Pore Diameter Distribution Histogram (Grouped) ---
+    # --- Pore Diameter Histogram (Grouped) ---
     st.subheader("📊 Pore Diameter Distribution Histogram")
     fig = go.Figure()
     if primary_diameters:
-        fig.add_trace(go.Histogram(x=primary_diameters, nbinsx=15, name="Primary (≤10 nm)", marker_color="blue"))
+        primary_hist = np.histogram(primary_diameters, bins=15)
+        primary_filtered = [v for v in primary_diameters if np.histogram(primary_diameters, bins=primary_hist[1])[0][np.digitize(v, primary_hist[1]) - 1] >= 3]
+        fig.add_trace(go.Histogram(x=primary_filtered, nbinsx=15, name="Primary (≤10 nm)", marker_color="blue"))
     if secondary_diameters:
-        fig.add_trace(go.Histogram(x=secondary_diameters, nbinsx=15, name="Secondary (≥10 nm)", marker_color="orange"))
+        secondary_hist = np.histogram(secondary_diameters, bins=15)
+        secondary_filtered = [v for v in secondary_diameters if np.histogram(secondary_diameters, bins=secondary_hist[1])[0][np.digitize(v, secondary_hist[1]) - 1] >= 3]
+        fig.add_trace(go.Histogram(x=secondary_filtered, nbinsx=15, name="Secondary (≥10 nm)", marker_color="orange"))
     fig.update_layout(
         barmode="group",
-        title="Pore Diameter Distribution (Grouped)",
+        title="Pore Diameter Distribution (Filtered ≥3)",
         xaxis_title="Diameter (nm)",
         yaxis_title="Count"
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Porosity Summary Text ---
+    # --- Summary ---
     st.subheader("📄 Porosity Analysis Summary")
     summary_text = f"""
     Porosity Analysis Summary:
@@ -241,7 +239,7 @@ def analyze_porosity_page():
     """
     st.text(summary_text)
 
-    # --- Save to Session State ---
+    # Save to session
     st.session_state.pore_areas_nm2 = all_pore_areas_nm2
     st.session_state.porosity_ratio = pore_area_pct
     st.session_state.porosity_summary = {
@@ -362,24 +360,34 @@ def analyze_pt_particles_page():
     # === 6. Grain Size Histogram ===
     st.subheader("📊 Grain Size Histogram (Pt Particle Diameter)")
     all_grain_sizes = ccl_grain_sizes + ncc_grain_sizes
-    fig_size = px.histogram(
-        x=all_grain_sizes,
-        nbins=20,
-        labels={"x": "Diameter (nm)", "y": "Count"},
-        title="Grain Size Distribution of Pt Particles"
-    ).update_traces(marker_color="indigo")
-    st.plotly_chart(fig_size, use_container_width=True)
+    hist_counts, bin_edges = np.histogram(all_grain_sizes, bins=20)
+    filtered_bins = [(bin_edges[i], bin_edges[i+1]) for i, c in enumerate(hist_counts) if c >= 3]
+    filtered_grain_sizes = [v for v in all_grain_sizes if any(start <= v < end for start, end in filtered_bins)]
+    st.plotly_chart(
+        px.histogram(
+            x=filtered_grain_sizes,
+            nbins=20,
+            labels={"x": "Diameter (nm)", "y": "Count"},
+            title="Grain Size Distribution of Pt Particles"
+        ).update_traces(marker_color="indigo"),
+        use_container_width=True
+    )
 
     # === 7. Surface Area Histogram ===
     st.subheader("📊 Surface Area Histogram")
     all_surface_areas = ccl_surface_areas + ncc_surface_areas
-    fig_area = px.histogram(
-        x=all_surface_areas,
-        nbins=20,
-        labels={"x": "Surface Area (nm²)", "y": "Count"},
-        title="Spherical Surface Area Distribution"
-    ).update_traces(marker_color="darkorange")
-    st.plotly_chart(fig_area, use_container_width=True)
+    hist_counts_area, bin_edges_area = np.histogram(all_surface_areas, bins=20)
+    filtered_bins_area = [(bin_edges_area[i], bin_edges_area[i+1]) for i, c in enumerate(hist_counts_area) if c >= 3]
+    filtered_surface_areas = [v for v in all_surface_areas if any(start <= v < end for start, end in filtered_bins_area)]
+    st.plotly_chart(
+        px.histogram(
+            x=filtered_surface_areas,
+            nbins=20,
+            labels={"x": "Surface Area (nm²)", "y": "Count"},
+            title="Spherical Surface Area Distribution"
+        ).update_traces(marker_color="darkorange"),
+        use_container_width=True
+    )
 
     # === 8. Heatmap ===
     st.subheader("🌡️ Pt Particle Distribution Heatmap")
