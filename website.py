@@ -153,12 +153,15 @@ def analyze_porosity_page():
     area_conversion = nm_per_pixel ** 2
     total_area_image_nm2 = image_cropped.shape[0] * image_cropped.shape[1] * area_conversion
 
+    # Extract Porosity Layer (Class 0)
     porosity_mask = (segmented == 0).astype(np.uint8)
     labeled = label(porosity_mask)
     props = regionprops(labeled)
 
     primary_diameters = []
     secondary_diameters = []
+    primary_areas = []
+    secondary_areas = []
     all_pore_areas_nm2 = []
 
     for region in props:
@@ -170,9 +173,12 @@ def analyze_porosity_page():
 
             if diameter_nm < 10:
                 primary_diameters.append(diameter_nm)
+                primary_areas.append(area_nm2)
             else:
                 secondary_diameters.append(diameter_nm)
+                secondary_areas.append(area_nm2)
 
+    # --- Calculate Porosity Ratio ---
     total_pore_area = np.sum(all_pore_areas_nm2)
     pore_area_pct = (total_pore_area / total_area_image_nm2) * 100
 
@@ -180,7 +186,7 @@ def analyze_porosity_page():
     avg_secondary_size = np.mean(secondary_diameters) if secondary_diameters else 0
     rm_ratio = (avg_secondary_size / avg_primary_size) if avg_primary_size > 0 else 0
 
-    # --- Detection Image ---
+    # --- Pore Detection Image with Contours ---
     st.subheader("🔍 Pore Detection Image")
     overlay = cv2.cvtColor(image_cropped, cv2.COLOR_GRAY2BGR)
     for region in props:
@@ -192,45 +198,42 @@ def analyze_porosity_page():
             cv2.drawContours(overlay, contours, -1, (0, 255, 0), 1)
     st.image(overlay, caption="Detected Pores (Contours)", use_container_width=True)
 
-    # --- Pore Area Histogram ---
+    # --- Pore Area Distribution ---
     st.subheader("📊 Pore Area Distribution Histogram")
+    # Create the histogram
     hist_area = np.histogram(all_pore_areas_nm2, bins=20)
     area_bins = hist_area[1]
     area_counts = hist_area[0]
 
-    # Apply filter to show only bins with counts >= 3
-    filtered_area = [all_pore_areas_nm2[i] for i in range(len(all_pore_areas_nm2)) if area_counts[np.digitize(all_pore_areas_nm2[i], area_bins)-1] >= 3]
+    # Filter out bins with counts less than 3
+    filtered_area = [all_pore_areas_nm2[i] for i in range(len(all_pore_areas_nm2)) if area_counts[np.digitize(all_pore_areas_nm2[i], area_bins) - 1] >= 3]
 
     st.plotly_chart(
         px.histogram(
             x=filtered_area,
             nbins=20,
             labels={"x": "Pore Area (nm²)", "y": "Count"},
-            title="Pore Area Distribution (Filtered ≥3)"
+            title="Pore Area Distribution (Filtered)"
         ).update_traces(marker_color="steelblue"),
         use_container_width=True
     )
 
-    # --- Pore Diameter Histogram (Grouped) ---
+    # --- Pore Diameter Distribution Histogram (Grouped) ---
     st.subheader("📊 Pore Diameter Distribution Histogram")
     fig = go.Figure()
     if primary_diameters:
-        primary_hist = np.histogram(primary_diameters, bins=15)
-        primary_filtered = [v for v in primary_diameters if primary_hist[0][np.digitize(v, primary_hist[1]) - 1] >= 3]
-        fig.add_trace(go.Histogram(x=primary_filtered, nbinsx=15, name="Primary (≤10 nm)", marker_color="blue"))
+        fig.add_trace(go.Histogram(x=primary_diameters, nbinsx=15, name="Primary (≤10 nm)", marker_color="blue"))
     if secondary_diameters:
-        secondary_hist = np.histogram(secondary_diameters, bins=15)
-        secondary_filtered = [v for v in secondary_diameters if secondary_hist[0][np.digitize(v, secondary_hist[1]) - 1] >= 3]
-        fig.add_trace(go.Histogram(x=secondary_filtered, nbinsx=15, name="Secondary (≥10 nm)", marker_color="orange"))
+        fig.add_trace(go.Histogram(x=secondary_diameters, nbinsx=15, name="Secondary (≥10 nm)", marker_color="orange"))
     fig.update_layout(
         barmode="group",
-        title="Pore Diameter Distribution (Filtered ≥3)",
+        title="Pore Diameter Distribution (Grouped)",
         xaxis_title="Diameter (nm)",
         yaxis_title="Count"
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Summary ---
+    # --- Porosity Summary Text ---
     st.subheader("📄 Porosity Analysis Summary")
     summary_text = f"""
     Porosity Analysis Summary:
@@ -241,7 +244,7 @@ def analyze_porosity_page():
     """
     st.text(summary_text)
 
-    # Save to session
+    # --- Save to Session State ---
     st.session_state.pore_areas_nm2 = all_pore_areas_nm2
     st.session_state.porosity_ratio = pore_area_pct
     st.session_state.porosity_summary = {
