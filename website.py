@@ -689,16 +689,26 @@ import cv2
 import streamlit as st
 import plotly.graph_objects as go
 from PIL import Image
-from scipy.ndimage import gaussian_filter  # 確保有導入 gaussian_filter
+from scipy.ndimage import gaussian_filter
 
+# === 2. Preprocess Image: Crop Scale Bar ===
+def auto_crop_scale_bar(img, threshold=80):
+    h, _ = img.shape
+    if np.mean(img[int(h * 0.9):]) < threshold:
+        black_row = np.where(np.mean(img, axis=1) < threshold)[0][0]
+        return img[:black_row, :]
+    return img
+
+# === Downsample Image ===
 def downsample_image(image, factor=4):
     """
     Downsamples the image by a given factor (e.g., factor=4 will reduce the resolution by 4x).
     """
     width, height = image.size
     new_size = (width // factor, height // factor)  # Calculate new size by the factor
-    return image.resize(new_size, Image.ANTIALIAS)
+    return image.resize(new_size, Image.Resampling.LANCZOS)
 
+# 3D可視化：使用 intensity 同時決定 z 軸與顏色（反轉灰階 colormap + smoothing）
 def view_3d_model():
     st.title("🧊 3D Grayscale Intensity Viewer")
 
@@ -706,16 +716,17 @@ def view_3d_model():
         st.error("⚠️ Please upload an image first!")
         return
 
-    # Optional: Apply downsampling to reduce the image resolution
-    downsample_factor = st.slider("Downsampling Factor", 1, 10, 4)
-    downsampled_image = downsample_image(st.session_state.image, factor=downsample_factor)
-
-    # Convert the downsampled image to grayscale and apply smoothing if needed
-    image_gray = np.array(downsampled_image.convert("L"))
-    
+    # ✅ Gaussian smoothing slider
     smoothing_sigma = st.slider("🧹 Smoothing (Gaussian Blur σ)", min_value=0.0, max_value=5.0, value=0.0, step=0.1)
+
+    # 灰階轉換與模糊處理
+    image_gray = np.array(st.session_state.image.convert("L"))
     if smoothing_sigma > 0:
         image_gray = gaussian_filter(image_gray, sigma=smoothing_sigma)
+
+    # === Downsample the image for performance improvement ===
+    image_gray = downsample_image(st.session_state.image, factor=4)  # Example with factor = 4
+    image_gray = np.array(image_gray.convert("L"))
 
     height, width = image_gray.shape
     x_vals, y_vals, z_vals = [], [], []
@@ -763,7 +774,12 @@ def view_3d_model():
     • Adjust smoothing to reduce noise and enhance topography.
     """)
 
-# Debug entry point removed for production
+# debug entry point
+def debug_process():
+    if st.session_state.image is None:
+        st.error("⚠️ Please upload an image first!")
+        return
+    view_3d_model()
 
 
 # In[3]:
