@@ -253,23 +253,24 @@ def analyze_porosity_page():
 # **Page 3: Pt Particle Analysis (CCL + NCC + Heatmap)**
 def analyze_pt_particles_page():
     inject_ga()
-    st.title("⚙️ Pt Particle Analysis (BSE Image)")
+    st.title("⚙️ Pt Particle Analysis with CCL + NCC")
 
     if st.session_state.image_bse is None or st.session_state.pixel_to_um is None:
-        st.error("⚠️ Please upload BSE image and set the scale first!")
+        st.error("⚠️ Please upload images and set the scale first!")
         return
 
-    image_np = np.array(st.session_state.image_bse)
+    image_np = np.array(st.session_state.image_bse.convert("L"))
 
     # === 1. Multi-Otsu Segmentation ===
-    thresholds = threshold_multiotsu(image_np, classes=4)
-    segmented = np.digitize(image_np, bins=thresholds)
+    img_cropped = auto_crop_scale_bar(image_np)
+    thresholds = threshold_multiotsu(img_cropped, classes=4)
+    segmented = np.digitize(img_cropped, bins=thresholds)
 
     st.subheader("🧪 Multi-Otsu Segmentation Result")
     st.image(segmented * 85, caption="Segmented Classes (4 classes)", use_container_width=True, clamp=True)
 
     # === 2. FFT Background Removal ===
-    f = fft2(image_np)
+    f = fft2(img_cropped)
     fshift = fftshift(f)
     crow, ccol = fshift.shape[0] // 2, fshift.shape[1] // 2
     fshift[crow-10:crow+10, ccol-10:ccol+10] *= 0.1
@@ -280,7 +281,7 @@ def analyze_pt_particles_page():
     layer = 3
     nm_per_pixel = st.session_state.pixel_to_um * 1000
     area_conversion = nm_per_pixel ** 2
-    total_area_image_nm2 = image_np.shape[0] * image_np.shape[1] * area_conversion
+    total_area_image_nm2 = img_cropped.shape[0] * img_cropped.shape[1] * area_conversion
 
     particles_mask = (segmented == layer)
     particles_mask = remove_small_objects(particles_mask, min_size=10)
@@ -411,18 +412,19 @@ def analyze_pt_particles_page():
     st.subheader("📋 Pt Particle Summary")
     all_areas_nm2 = ccl_areas_nm2 + ncc_areas_nm2
     total_surface_area_nm2 = np.sum(all_surface_areas)
-    effective_surface_area = total_surface_area_nm2 / total_area_image_nm2
     avg_grain_size = np.mean(all_grain_sizes)
     mean_area = np.mean(all_areas_nm2)
+    # ✅ 改為 cm²/cm²
+    effective_surface_area_cm2_per_cm2 = (total_surface_area_nm2 / total_area_image_nm2) * 10000
 
     summary = {
-        "Total Particles": len(all_areas_nm2),
+        "Total Pt Particles": len(all_areas_nm2),
         "CCL Particles": len(ccl_areas_nm2),
         "NCC Particles": len(ncc_areas_nm2),
         "Average Grain Size (nm)": avg_grain_size,
         "Mean Particle Area (nm²)": mean_area,
         "Total Surface Area (nm²)": total_surface_area_nm2,
-        "Effective Surface Area per nm²": effective_surface_area
+        "Effective Pt particle surface (cm²) per unit area of CL (cm²)": effective_surface_area_cm2_per_cm2
     }
 
     df_summary = pd.DataFrame(summary, index=["Result"])
