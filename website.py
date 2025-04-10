@@ -834,14 +834,13 @@ def handle_scale_annotation():
 # **Page 1: Upload SEI + BSE & Annotate Scale**
 def upload_and_mark_scale():
     inject_ga()
-    st.title("📷 Upload BSE & SEI Images + Annotate Scale Bar")
 
-    # ✅ 顯示封面圖
+    # ✅ 封面圖置中顯示
     col_left, col_img, col_right = st.columns([1, 6, 1])
     with col_img:
         st.image("cover_image.png", use_container_width=True)
 
-    # ✅ 支援 .tif, .tiff
+    # ✅ 雙圖上傳區塊（支援 TIF）
     col1, col2 = st.columns(2)
     with col1:
         sei_file = st.file_uploader("🔬 Upload SEI Image (for Porosity)", type=["png", "jpg", "jpeg", "bmp", "tif", "tiff"], key="sei")
@@ -852,45 +851,32 @@ def upload_and_mark_scale():
         sei_img = Image.open(sei_file).convert("RGB")
         bse_img = Image.open(bse_file).convert("RGB")
 
-        st.session_state.image_display = sei_img
+        st.session_state.image = sei_img  # 用 SEI 當 base 顯示用
         fig = plot_image_with_annotations()
         st.plotly_chart(fig, use_container_width=True)
 
-        # 處理點擊事件
-        click_data = st.session_state.get("plotly_click_event")
-        if click_data:
-            x_click = int(click_data["points"][0]["x"])
-            y_click = int(click_data["points"][0]["y"])
-            if len(st.session_state.scale_coords) < 2:
-                st.session_state.scale_coords.append((x_click, y_click))
+        # ✅ 手動輸入座標欄位
+        st.write("Manually input two coordinate points (X and Y):")
+        col1, col2 = st.columns(2)
+        with col1:
+            x1 = st.number_input("First point X", min_value=0, step=1, key="x1_input")
+            x2 = st.number_input("Second point X", min_value=0, step=1, key="x2_input")
+        with col2:
+            y1 = st.number_input("First point Y", min_value=0, step=1, key="y1_input")
+            y2 = st.number_input("Second point Y", min_value=0, step=1, key="y2_input")
+
+        # ✅ 點擊按鈕後記錄進 session
+        if st.button("Mark Scale", key="mark_scale_button"):
+            if x1 != x2 or y1 != y2:
+                st.session_state.scale_coords = [(x1, y1), (x2, y2)]
+                st.success(f"✅ Selected scale range: {abs(x2 - x1):.2f} px")
                 st.rerun()
+            else:
+                st.error("⚠️ The two coordinates cannot be identical. Please re-enter.")
 
-        if len(st.session_state.scale_coords) == 2:
-            x1, y1 = st.session_state.scale_coords[0]
-            x2, y2 = st.session_state.scale_coords[1]
-            scale_pixels = abs(x2 - x1)
-            st.session_state.scale_pixels = scale_pixels
-            st.success(f"✅ Selected scale range: {scale_pixels:.2f} px")
+        # ✅ 處理實際 µm 長度輸入 → 裁圖 & 存檔
+        handle_scale_annotation()
 
-            scale_length_input = st.text_input("Enter actual scale length (µm):", "10")
-
-            if st.button("Calculate µm/px"):
-                try:
-                    scale_length_um = float(scale_length_input)
-                    st.session_state.scale_length_um = scale_length_um
-                    pixel_to_um = scale_length_um / scale_pixels
-                    st.session_state.pixel_to_um = pixel_to_um
-                    st.success(f"📏 Result: {scale_length_um:.2f} µm ({pixel_to_um:.4f} µm/px)")
-
-                    # 裁剪比例尺並更新分析圖像（SEI、BSE）
-                    sei_crop = auto_crop_scale_bar(np.array(sei_img.convert("L")))
-                    bse_crop = auto_crop_scale_bar(np.array(bse_img.convert("L")))
-                    st.session_state.image_sei = Image.fromarray(sei_crop)
-                    st.session_state.image_bse = Image.fromarray(bse_crop)
-                    st.rerun()
-
-                except ValueError:
-                    st.error("⚠️ Invalid input. Please enter a number.")
 
 # **Main Application Entry Point**
 def main():
