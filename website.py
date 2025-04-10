@@ -691,7 +691,14 @@ import plotly.graph_objects as go
 from PIL import Image
 from scipy.ndimage import gaussian_filter  # 確保有導入 gaussian_filter
 
-# 3D可視化：使用 intensity 同時決定 z 軸與顏色（反轉灰階 colormap + smoothing）
+def downsample_image(image, factor=4):
+    """
+    Downsamples the image by a given factor (e.g., factor=4 will reduce the resolution by 4x).
+    """
+    width, height = image.size
+    new_size = (width // factor, height // factor)  # Calculate new size by the factor
+    return image.resize(new_size, Image.ANTIALIAS)
+
 def view_3d_model():
     st.title("🧊 3D Grayscale Intensity Viewer")
 
@@ -699,14 +706,14 @@ def view_3d_model():
         st.error("⚠️ Please upload an image first!")
         return
 
-    # ✅ Apply scale bar crop
-    image_cropped = auto_crop_scale_bar(np.array(st.session_state.image.convert("L")))
+    # Optional: Apply downsampling to reduce the image resolution
+    downsample_factor = st.slider("Downsampling Factor", 1, 10, 4)
+    downsampled_image = downsample_image(st.session_state.image, factor=downsample_factor)
 
-    # ✅ Gaussian smoothing slider
+    # Convert the downsampled image to grayscale and apply smoothing if needed
+    image_gray = np.array(downsampled_image.convert("L"))
+    
     smoothing_sigma = st.slider("🧹 Smoothing (Gaussian Blur σ)", min_value=0.0, max_value=5.0, value=0.0, step=0.1)
-
-    # 灰階轉換與模糊處理
-    image_gray = image_cropped
     if smoothing_sigma > 0:
         image_gray = gaussian_filter(image_gray, sigma=smoothing_sigma)
 
@@ -716,7 +723,7 @@ def view_3d_model():
     for y in range(height):
         for x in range(width):
             intensity = image_gray[y, x]
-            if intensity > 0:  # 只保留有灰階值的點
+            if intensity > 0:
                 x_vals.append(x)
                 y_vals.append(y)
                 z_vals.append(intensity)
@@ -729,7 +736,7 @@ def view_3d_model():
         marker=dict(
             size=1,
             color=z_vals,
-            colorscale="Greys_r",  # 反轉灰階：0=黑，255=白
+            colorscale="Greys_r",  # ✅ 反轉灰階：0=黑，255=白
             opacity=0.8,
             colorbar=dict(title="Intensity")
         )
@@ -756,6 +763,7 @@ def view_3d_model():
     • Adjust smoothing to reduce noise and enhance topography.
     """)
 
+# Debug entry point removed for production
 
 
 # In[3]:
