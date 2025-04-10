@@ -210,7 +210,7 @@ def analyze_porosity_page():
     area_hist_data = fig_area.data[0]
     area_x = area_hist_data.x
     area_y = area_hist_data.y
-    mask = area_y > 10
+    mask = area_y > 10  # Filter out bins with count <= 10
     fig_area.data[0].x = area_x[mask]
     fig_area.data[0].y = area_y[mask]
     st.plotly_chart(fig_area, use_container_width=True)
