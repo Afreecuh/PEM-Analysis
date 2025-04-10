@@ -764,6 +764,8 @@ def debug_process():
 # In[3]:
 
 
+# === 第九區塊：主程式入口與初始化 ===
+
 # **Google Analytics Tracking Code**
 def inject_ga():
     """Inject Google Analytics tracking code into the Streamlit app."""
@@ -780,18 +782,19 @@ def inject_ga():
     components.html(ga_code, height=0)
 
 # **Initialize Session State**
-if "page" not in st.session_state:
-    st.session_state.page = 1
-if "scale_coords" not in st.session_state:
-    st.session_state.scale_coords = []
-if "pixel_to_um" not in st.session_state:
-    st.session_state.pixel_to_um = None
-if "scale_pixels" not in st.session_state:
-    st.session_state.scale_pixels = None
-if "scale_length_um" not in st.session_state:
-    st.session_state.scale_length_um = None
-if "image" not in st.session_state:
-    st.session_state.image = None
+init_keys = {
+    "page": 1,
+    "scale_coords": [],
+    "pixel_to_um": None,
+    "scale_pixels": None,
+    "scale_length_um": None,
+    "image": None,
+    "image_sei": None,
+    "image_bse": None,
+}
+for k, v in init_keys.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 def next_page():
     st.session_state.page += 1
@@ -799,48 +802,41 @@ def next_page():
 def prev_page():
     st.session_state.page -= 1
 
-# **Handle scale annotation and calculate µm/px**
-def handle_scale_annotation():
-    if len(st.session_state.scale_coords) == 2:
-        x1, y1 = st.session_state.scale_coords[0]
-        x2, y2 = st.session_state.scale_coords[1]
-        scale_pixels = abs(x2 - x1)  # **Only calculate X-direction distance**
-        st.session_state.scale_pixels = scale_pixels
+# **Plot Image with Annotations**
+def plot_image_with_annotations():
+    if "image" not in st.session_state or st.session_state.image is None:
+        st.warning("⚠️ No image available to plot.")
+        return go.Figure()
 
-        st.success(f"✅ Selected scale range: {scale_pixels:.2f} px")
+    try:
+        image_np = np.array(st.session_state.image)
+    except Exception as e:
+        st.error(f"⚠️ Failed to convert image: {e}")
+        return go.Figure()
 
-        # **Input actual scale length**
-        scale_length_input = st.text_input("Enter actual scale length (µm):", "10")
+    fig = px.imshow(image_np, color_continuous_scale='gray')
 
-        if st.button("Calculate µm/px"):
-            try:
-                scale_length_um = float(scale_length_input)
-                st.session_state.scale_length_um = scale_length_um
-                pixel_to_um = scale_length_um / scale_pixels
-                st.session_state.pixel_to_um = pixel_to_um
-                st.success(f"📏 Result: {scale_length_um:.2f} µm ({pixel_to_um:.4f} µm/px)")
+    for coord in st.session_state.scale_coords:
+        fig.add_trace(go.Scatter(
+            x=[coord[0]],
+            y=[coord[1]],
+            mode="markers",
+            marker=dict(color="red", size=10),
+            name="Annotation Point"
+        ))
 
-                # ✅ Crop scale bar after conversion and overwrite image
-                from skimage import exposure
-                image_array = np.array(st.session_state.image)
-                image_array = exposure.rescale_intensity(image_array, in_range='image', out_range=(0, 255)).astype(np.uint8)
-                cropped = auto_crop_scale_bar(image_array)
-                st.session_state.image = Image.fromarray(cropped)  # ✅ Store as PIL Image again
-                st.rerun()
-
-            except ValueError:
-                st.error("⚠️ Invalid input. Please enter a number.")
+    return fig
 
 # **Page 1: Upload SEI + BSE & Annotate Scale**
 def upload_and_mark_scale():
     inject_ga()
 
-    # ✅ 封面圖置中顯示
+    # 封面圖中置顯示
     col_left, col_img, col_right = st.columns([1, 6, 1])
     with col_img:
         st.image("cover_image.png", use_container_width=True)
 
-    # ✅ 雙圖上傳區塊（支援 TIF）
+    # 上傳區
     col1, col2 = st.columns(2)
     with col1:
         sei_file = st.file_uploader("🔬 Upload SEI Image (for Porosity)", type=["png", "jpg", "jpeg", "bmp", "tif", "tiff"], key="sei")
@@ -851,11 +847,10 @@ def upload_and_mark_scale():
         sei_img = Image.open(sei_file).convert("RGB")
         bse_img = Image.open(bse_file).convert("RGB")
 
-        st.session_state.image = sei_img  # 用 SEI 當顯示主圖
+        st.session_state.image = sei_img
         fig = plot_image_with_annotations()
         st.plotly_chart(fig, use_container_width=True)
 
-        # ✅ 手動輸入座標欄位
         st.write("Manually input two coordinate points (X and Y):")
         col1, col2 = st.columns(2)
         with col1:
@@ -865,7 +860,6 @@ def upload_and_mark_scale():
             y1 = st.number_input("First point Y", min_value=0, step=1, key="y1_input")
             y2 = st.number_input("Second point Y", min_value=0, step=1, key="y2_input")
 
-        # ✅ 點擊按鈕後記錄座標
         if st.button("Mark Scale", key="mark_scale_button"):
             if x1 != x2 or y1 != y2:
                 st.session_state.scale_coords = [(x1, y1), (x2, y2)]
@@ -876,10 +870,9 @@ def upload_and_mark_scale():
             else:
                 st.error("⚠️ The two coordinates cannot be identical. Please re-enter.")
 
-        # ✅ 比例尺長度輸入與計算
+        # 計算 µm/px
         if len(st.session_state.scale_coords) == 2:
             scale_length_input = st.text_input("Enter actual scale length (µm):", "10")
-
             if st.button("Calculate µm/px"):
                 if not scale_length_input.strip():
                     st.error("⚠️ Please input a valid number before calculating.")
@@ -892,7 +885,6 @@ def upload_and_mark_scale():
                         st.session_state.pixel_to_um = pixel_to_um
                         st.success(f"📏 Result: {scale_length_um:.2f} µm ({pixel_to_um:.4f} µm/px)")
 
-                        # ✅ 裁剪並儲存兩張圖片
                         sei_crop = auto_crop_scale_bar(np.array(sei_img.convert("L")))
                         bse_crop = auto_crop_scale_bar(np.array(bse_img.convert("L")))
                         st.session_state.image_sei = Image.fromarray(sei_crop)
@@ -902,12 +894,8 @@ def upload_and_mark_scale():
                     except ValueError:
                         st.error("⚠️ Invalid input. Please enter a number.")
 
-
 # **Main Application Entry Point**
 def main():
-    if "page" not in st.session_state:
-        st.session_state.page = 1
-
     show_user_guide()
 
     if st.session_state.page == 1:
@@ -933,7 +921,7 @@ def main():
                 next_page()
                 st.rerun()
 
-# ✅ Run main app
+# ✅ Run
 if __name__ == "__main__":
     main()
 
