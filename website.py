@@ -836,11 +836,17 @@ def upload_and_mark_scale():
     inject_ga()
     st.title("📷 Upload BSE & SEI Images + Annotate Scale Bar")
 
+    # ✅ 顯示封面圖
+    col_left, col_img, col_right = st.columns([1, 6, 1])
+    with col_img:
+        st.image("cover_image.png", use_container_width=True)
+
+    # ✅ 支援 .tif, .tiff
     col1, col2 = st.columns(2)
     with col1:
-        sei_file = st.file_uploader("🔬 Upload SEI Image (for Porosity)", type=["png", "jpg", "jpeg", "bmp"], key="sei")
+        sei_file = st.file_uploader("🔬 Upload SEI Image (for Porosity)", type=["png", "jpg", "jpeg", "bmp", "tif", "tiff"], key="sei")
     with col2:
-        bse_file = st.file_uploader("⚙️ Upload BSE Image (for Pt Analysis)", type=["png", "jpg", "jpeg", "bmp"], key="bse")
+        bse_file = st.file_uploader("⚙️ Upload BSE Image (for Pt Analysis)", type=["png", "jpg", "jpeg", "bmp", "tif", "tiff"], key="bse")
 
     if sei_file and bse_file:
         sei_img = Image.open(sei_file).convert("RGB")
@@ -885,7 +891,6 @@ def upload_and_mark_scale():
 
                 except ValueError:
                     st.error("⚠️ Invalid input. Please enter a number.")
-
 
 # **Main Application Entry Point**
 def main():
