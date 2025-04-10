@@ -27,78 +27,6 @@ import openai
 
 openai.api_key = st.secrets["openai"]["api_key"]
 
-
-# In[1]:
-
-
-# **Initialize Session State**
-if "scale_coords" not in st.session_state:
-    st.session_state.scale_coords = []
-if "scale_pixels" not in st.session_state:
-    st.session_state.scale_pixels = None
-if "scale_length_um" not in st.session_state:
-    st.session_state.scale_length_um = None
-if "pixel_to_um" not in st.session_state:
-    st.session_state.pixel_to_um = None
-if "image" not in st.session_state:
-    st.session_state.image = None
-
-# **Update annotation points when user clicks**
-def update_coords(click_x, click_y):
-    """Record coordinates of user clicks, maximum of two points"""
-    if len(st.session_state.scale_coords) < 2:
-        st.session_state.scale_coords.append((click_x, click_y))
-        st.rerun()
-    else:
-        st.warning("⚠️ Two points already marked. Please input the actual scale length!")
-
-# **Plot Image with Annotations**
-def plot_image_with_annotations():
-    image = st.session_state.image
-    fig = px.imshow(np.array(image), color_continuous_scale='gray')
-
-    for coord in st.session_state.scale_coords:
-        fig.add_trace(go.Scatter(
-            x=[coord[0]],
-            y=[coord[1]],
-            mode="markers",
-            marker=dict(color="red", size=10),
-            name="Annotation Point"
-        ))
-
-    return fig
-
-# **Handle scale annotation and calculate µm/px**
-def handle_scale_annotation():
-    if len(st.session_state.scale_coords) == 2:
-        x1, y1 = st.session_state.scale_coords[0]
-        x2, y2 = st.session_state.scale_coords[1]
-        scale_pixels = abs(x2 - x1)
-        st.session_state.scale_pixels = scale_pixels
-        st.success(f"✅ Selected scale range: {scale_pixels:.2f} px")
-
-        scale_length_input = st.text_input("Enter actual scale length (µm):", "10")
-
-        if st.button("Calculate µm/px"):
-            try:
-                scale_length_um = float(scale_length_input)
-                st.session_state.scale_length_um = scale_length_um
-                pixel_to_um = scale_length_um / scale_pixels
-                st.session_state.pixel_to_um = pixel_to_um
-                st.success(f"📏 Result: {scale_length_um:.2f} µm ({pixel_to_um:.4f} µm/px)")
-
-                # ✅ 裁剪比例尺並更新 session_state.image
-                image_gray = np.array(st.session_state.image.convert("L"))
-                cropped = auto_crop_scale_bar(image_gray)
-                st.session_state.image = Image.fromarray(cropped)
-
-            except ValueError:
-                st.error("⚠️ Invalid input. Please enter a number.")
-
-
-# In[ ]:
-
-
 # === 2. Preprocess Image: Crop Scale Bar ===
 def auto_crop_scale_bar(img, threshold=80):
     h, _ = img.shape
@@ -107,18 +35,114 @@ def auto_crop_scale_bar(img, threshold=80):
         return img[:black_row, :]
     return img
 
+
+# In[1]:
+
+
+# === 2. 比例尺處理區塊：雙圖上傳 + 比例尺標記與裁剪 ===
+
+# 初始化 session_state 欄位
+for key in ["scale_coords", "scale_pixels", "scale_length_um", "pixel_to_um",
+            "image_display", "image_bse", "image_sei"]:
+    if key not in st.session_state:
+        st.session_state[key] = None if key != "scale_coords" else []
+
+# 更新點擊座標（最多兩點）
+def update_coords(click_x, click_y):
+    if len(st.session_state.scale_coords) < 2:
+        st.session_state.scale_coords.append((click_x, click_y))
+        st.rerun()
+    else:
+        st.warning("⚠️ 已標註兩個點，請輸入比例長度。")
+
+# 顯示圖像並標註座標點
+def plot_image_with_annotations():
+    image = st.session_state.image_display
+    fig = px.imshow(np.array(image), color_continuous_scale='gray')
+    for coord in st.session_state.scale_coords:
+        fig.add_trace(go.Scatter(
+            x=[coord[0]],
+            y=[coord[1]],
+            mode="markers",
+            marker=dict(color="red", size=10),
+            name="Annotation Point"
+        ))
+    return fig
+
+# 自動裁剪比例尺（底部黑色區域）
+def auto_crop_scale_bar(img, threshold=80):
+    h, _ = img.shape
+    if np.mean(img[int(h * 0.9):]) < threshold:
+        black_row = np.where(np.mean(img, axis=1) < threshold)[0][0]
+        return img[:black_row, :]
+    return img
+
+# 上傳雙圖 + 標註比例尺介面
+def upload_and_mark_scale():
+    st.title("📷 Upload BSE & SEI Images + Annotate Scale Bar")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        sei_file = st.file_uploader("🔬 Upload SEI Image (for Porosity)", type=["png", "jpg", "jpeg", "bmp"], key="sei")
+    with col2:
+        bse_file = st.file_uploader("⚙️ Upload BSE Image (for Pt Analysis)", type=["png", "jpg", "jpeg", "bmp"], key="bse")
+
+    if sei_file and bse_file:
+        sei_img = Image.open(sei_file).convert("RGB")
+        bse_img = Image.open(bse_file).convert("RGB")
+
+        st.session_state.image_display = sei_img  # 用 SEI 來標記比例尺
+        st.image(sei_img, caption="Click to mark two points on the scale bar", use_column_width=True)
+
+        # 標註點處理
+        click = st.plotly_chart(plot_image_with_annotations(), use_container_width=True)
+        click_data = st.session_state.get("plotly_click_event")
+        if click_data:
+            x_click = int(click_data["points"][0]["x"])
+            y_click = int(click_data["points"][0]["y"])
+            update_coords(x_click, y_click)
+
+        if len(st.session_state.scale_coords) == 2:
+            x1, y1 = st.session_state.scale_coords[0]
+            x2, y2 = st.session_state.scale_coords[1]
+            scale_pixels = abs(x2 - x1)
+            st.session_state.scale_pixels = scale_pixels
+            st.success(f"✅ Selected scale range: {scale_pixels:.2f} px")
+
+            scale_length_input = st.text_input("Enter actual scale length (µm):", "10")
+
+            if st.button("Calculate µm/px"):
+                try:
+                    scale_length_um = float(scale_length_input)
+                    st.session_state.scale_length_um = scale_length_um
+                    pixel_to_um = scale_length_um / scale_pixels
+                    st.session_state.pixel_to_um = pixel_to_um
+                    st.success(f"📏 Result: {scale_length_um:.2f} µm ({pixel_to_um:.4f} µm/px)")
+
+                    # 裁剪比例尺並更新分析圖像（SEI、BSE）
+                    sei_crop = auto_crop_scale_bar(np.array(sei_img.convert("L")))
+                    bse_crop = auto_crop_scale_bar(np.array(bse_img.convert("L")))
+                    st.session_state.image_sei = Image.fromarray(sei_crop)
+                    st.session_state.image_bse = Image.fromarray(bse_crop)
+
+                except ValueError:
+                    st.error("⚠️ Invalid input. Please enter a number.")
+
+
+# In[ ]:
+
+
 # **Page 2: Porosity Analysis (孔隙分析)**
 def analyze_porosity_page():
     inject_ga()
-    st.title("🔬 Porosity Analysis")
+    st.title("🔬 Porosity Analysis (SEI Image)")
 
-    if st.session_state.image is None:
-        st.error("⚠️ Please upload an image first!")
+    if st.session_state.image_sei is None:
+        st.error("⚠️ Please upload SEI image and set scale on Page 1!")
         return
 
-    image_gray = np.array(st.session_state.image.convert("L"))
-    image_cropped = auto_crop_scale_bar(image_gray)
-    image_cropped = exposure.rescale_intensity(image_cropped, in_range='image', out_range=(0, 255)).astype(np.uint8)
+    image_gray = np.array(st.session_state.image_sei)
+    image_cropped = exposure.rescale_intensity(image_gray, in_range='image', out_range=(0, 255)).astype(np.uint8)
 
     # --- Multi-Otsu Segmentation ---
     thresholds = threshold_multiotsu(image_cropped, classes=4)
@@ -229,24 +253,23 @@ def analyze_porosity_page():
 # **Page 3: Pt Particle Analysis (CCL + NCC + Heatmap)**
 def analyze_pt_particles_page():
     inject_ga()
-    st.title("⚙️ Pt Particle Analysis with CCL + NCC")
+    st.title("⚙️ Pt Particle Analysis (BSE Image)")
 
-    if st.session_state.image is None or st.session_state.pixel_to_um is None:
-        st.error("⚠️ Please upload an image and set the scale first!")
+    if st.session_state.image_bse is None or st.session_state.pixel_to_um is None:
+        st.error("⚠️ Please upload BSE image and set the scale first!")
         return
 
-    image_np = np.array(st.session_state.image.convert("L"))
+    image_np = np.array(st.session_state.image_bse)
 
     # === 1. Multi-Otsu Segmentation ===
-    img_cropped = auto_crop_scale_bar(image_np)
-    thresholds = threshold_multiotsu(img_cropped, classes=4)
-    segmented = np.digitize(img_cropped, bins=thresholds)
+    thresholds = threshold_multiotsu(image_np, classes=4)
+    segmented = np.digitize(image_np, bins=thresholds)
 
     st.subheader("🧪 Multi-Otsu Segmentation Result")
     st.image(segmented * 85, caption="Segmented Classes (4 classes)", use_container_width=True, clamp=True)
 
     # === 2. FFT Background Removal ===
-    f = fft2(img_cropped)
+    f = fft2(image_np)
     fshift = fftshift(f)
     crow, ccol = fshift.shape[0] // 2, fshift.shape[1] // 2
     fshift[crow-10:crow+10, ccol-10:ccol+10] *= 0.1
@@ -257,7 +280,7 @@ def analyze_pt_particles_page():
     layer = 3
     nm_per_pixel = st.session_state.pixel_to_um * 1000
     area_conversion = nm_per_pixel ** 2
-    total_area_image_nm2 = img_cropped.shape[0] * img_cropped.shape[1] * area_conversion
+    total_area_image_nm2 = image_np.shape[0] * image_np.shape[1] * area_conversion
 
     particles_mask = (segmented == layer)
     particles_mask = remove_small_objects(particles_mask, min_size=10)
@@ -429,46 +452,54 @@ def show_user_guide():
     """Display User Guide based on current page"""
     guide_content = {
         1: """
-        ### **Page 1: Upload Image & Scale Annotation**
-        - Upload an image (PNG, JPG, BMP).
-        - Click two points to **mark the scale**.
-        - Enter the actual scale length (µm).
-        - The system calculates **µm/px** automatically.
+        ### **Page 1: Upload BSE & SEI Images + Scale Annotation**
+        - Upload **SEI image** (used for Porosity Analysis) and **BSE image** (used for Pt Particle Detection).
+        - The system will show the **SEI image**.
+        - Click **two points on the SEI image** to mark the scale bar.
+        - Enter the actual scale length (in µm) and the system will calculate **µm/px**.
+        - This µm/px value is applied to **both images**, and the system automatically crops out the scale bar from each.
         - Click **Next** to proceed.
         """,
         2: """
-        ### **Page 2: Porosity Analysis**
-        - The system performs **background cleaning (FFT)** and **Multi-Otsu segmentation**.
-        - It selects the **porosity layer** to analyze pores and calculate:
-          - Total pore area
-          - Pore distribution
+        ### **Page 2: Porosity Analysis (SEI)**
+        - Performs **background enhancement** and **Multi-Otsu segmentation**.
+        - Detects pores in the SEI image and calculates:
+          - Porosity (%)
+          - Primary and secondary pore sizes
+          - Size ratio and area distribution
+        - Visualizes pore detection and histogram plots.
         - Click **Next** to proceed to Pt particle analysis.
         """,
         3: """
-        ### **Page 3: Pt Particle Analysis (CCL + NCC + Heatmap)**
-        - The system detects **Pt particles** using:
-          - **CCL** for larger particles
-          - **NCC** for matching smaller ones
-        - Generates **particle size distribution** and **heatmap**.
-        - Click **Next** to view 3D visualization of intensity.
+        ### **Page 3: Pt Particle Analysis (BSE)**
+        - Performs **Multi-Otsu segmentation** and **FFT background suppression**.
+        - Detects Pt particles in BSE image using:
+          - **CCL** (Connected Component Labeling) for larger particles
+          - **NCC** (Normalized Cross-Correlation) for smaller matched particles
+        - Displays:
+          - Particle size and surface area distributions
+          - Heatmap of particle locations
+        - Click **Next** to view 3D visualization of grayscale intensity.
         """,
         4: """
         ### **Page 4: 3D Visualization**
-        - Visualize grayscale intensities as a 3D structure.
-        - Each pixel's **brightness determines its depth and color**.
-        - Adjust **Gaussian smoothing (σ)** to reduce noise.
-        - Explore internal topography layer by layer.
-        - Click **Next** to generate and download the report.
+        - Visualizes grayscale intensities as a 3D point cloud structure.
+        - Each pixel's **brightness defines its depth and color**.
+        - Use the **Gaussian blur slider** to smooth the visualization.
+        - Useful for examining surface topography or texture contrast.
+        - Click **Next** to generate and download the full report.
         """,
         5: """
         ### **Page 5: Download Report**
-        - Click **"Generate PDF Report"** to create a detailed analysis report.
+        - Click **"Generate PDF Report"** to compile a detailed SEM report.
         - The report includes:
-          - Scale information
-          - Porosity and Pt particle analysis
-          - Heatmap and 3D visualization summary
-          - GPT-generated expert commentary
-        - Click **"Download PDF"** to save it to your device.
+          - Scale bar and µm/px info
+          - Porosity summary from SEI
+          - Pt particle summary from BSE
+          - Distribution histograms and heatmap
+          - 3D visualization note
+          - GPT-generated scientific commentary
+        - After generating, click **"Download PDF"** to save the file.
         """
     }
 
@@ -491,14 +522,7 @@ def generate_pdf():
     pdf.drawCentredString(width / 2, 750, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     pdf.line(50, 740, 550, 740)
 
-    # === Image preview ===
-    if st.session_state.image:
-        img_buffer = io.BytesIO()
-        st.session_state.image.save(img_buffer, format="PNG")
-        img_reader = ImageReader(img_buffer)
-        pdf.drawImage(img_reader, 100, 530, width=400, height=180)
-
-    y = 510
+    y = 720
 
     # === Scale Info ===
     pdf.setFont("Helvetica-Bold", 14)
@@ -514,7 +538,17 @@ def generate_pdf():
     pdf.line(50, y, 550, y)
     y -= 30
 
-    # === Porosity Summary ===
+    # === SEI Image & Porosity Summary ===
+    if st.session_state.get("image_sei"):
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(50, y, "SEI Image (Used for Porosity Analysis)")
+        y -= 190
+        img_buffer = io.BytesIO()
+        st.session_state.image_sei.save(img_buffer, format="PNG")
+        img_reader = ImageReader(img_buffer)
+        pdf.drawImage(img_reader, 100, y, width=400, height=180)
+        y -= 30
+
     poro_ratio = st.session_state.get("porosity_ratio", None)
     pore_areas = st.session_state.get("pore_areas_nm2", [])
     pdf.setFont("Helvetica-Bold", 14)
@@ -542,7 +576,20 @@ def generate_pdf():
     pdf.line(50, y, 550, y)
     y -= 30
 
-    # === Pt Particle Summary ===
+    # === BSE Image & Pt Particle Summary ===
+    if st.session_state.get("image_bse"):
+        if y < 200:  # 換頁避免蓋到
+            pdf.showPage()
+            y = 750
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(50, y, "BSE Image (Used for Pt Particle Analysis)")
+        y -= 190
+        img_buffer = io.BytesIO()
+        st.session_state.image_bse.save(img_buffer, format="PNG")
+        img_reader = ImageReader(img_buffer)
+        pdf.drawImage(img_reader, 100, y, width=400, height=180)
+        y -= 30
+
     pt_summary = st.session_state.get("pt_summary", {})
     pdf.setFont("Helvetica-Bold", 14)
     pdf.drawString(50, y, "Pt Particle Summary")
@@ -571,7 +618,6 @@ def generate_pdf():
     y -= 20
     pdf.setFont("Helvetica", 11)
 
-    # Prepare prompt
     poro_display = f"{poro_ratio:.2f}%" if poro_ratio is not None else "N/A"
     prompt = f"""
     Based on the following SEM analysis results, write a short expert commentary on:
