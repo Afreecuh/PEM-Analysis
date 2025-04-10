@@ -200,15 +200,20 @@ def analyze_porosity_page():
 
     # --- Pore Area Distribution ---
     st.subheader("📊 Pore Area Distribution Histogram")
-    st.plotly_chart(
-        px.histogram(
-            x=all_pore_areas_nm2,
-            nbins=20,
-            labels={"x": "Pore Area (nm²)", "y": "Count"},
-            title="Pore Area Distribution"
-        ).update_traces(marker_color="steelblue"),
-        use_container_width=True
-    )
+    fig_area = px.histogram(
+        x=all_pore_areas_nm2,
+        nbins=20,
+        labels={"x": "Pore Area (nm²)", "y": "Count"},
+        title="Pore Area Distribution"
+    ).update_traces(marker_color="steelblue")
+
+    area_hist_data = fig_area.data[0]
+    area_x = area_hist_data.x
+    area_y = area_hist_data.y
+    mask = area_y > 10
+    fig_area.data[0].x = area_x[mask]
+    fig_area.data[0].y = area_y[mask]
+    st.plotly_chart(fig_area, use_container_width=True)
 
     # --- Pore Diameter Distribution Histogram (Grouped) ---
     st.subheader("📊 Pore Diameter Distribution Histogram")
@@ -357,28 +362,24 @@ def analyze_pt_particles_page():
     # === 6. Grain Size Histogram ===
     st.subheader("📊 Grain Size Histogram (Pt Particle Diameter)")
     all_grain_sizes = ccl_grain_sizes + ncc_grain_sizes
-    st.plotly_chart(
-        px.histogram(
-            x=all_grain_sizes,
-            nbins=20,
-            labels={"x": "Diameter (nm)", "y": "Count"},
-            title="Grain Size Distribution of Pt Particles"
-        ).update_traces(marker_color="indigo"),
-        use_container_width=True
-    )
+    fig_size = px.histogram(
+        x=all_grain_sizes,
+        nbins=20,
+        labels={"x": "Diameter (nm)", "y": "Count"},
+        title="Grain Size Distribution of Pt Particles"
+    ).update_traces(marker_color="indigo")
+    st.plotly_chart(fig_size, use_container_width=True)
 
     # === 7. Surface Area Histogram ===
     st.subheader("📊 Surface Area Histogram")
     all_surface_areas = ccl_surface_areas + ncc_surface_areas
-    st.plotly_chart(
-        px.histogram(
-            x=all_surface_areas,
-            nbins=20,
-            labels={"x": "Surface Area (nm²)", "y": "Count"},
-            title="Spherical Surface Area Distribution"
-        ).update_traces(marker_color="darkorange"),
-        use_container_width=True
-    )
+    fig_area = px.histogram(
+        x=all_surface_areas,
+        nbins=20,
+        labels={"x": "Surface Area (nm²)", "y": "Count"},
+        title="Spherical Surface Area Distribution"
+    ).update_traces(marker_color="darkorange")
+    st.plotly_chart(fig_area, use_container_width=True)
 
     # === 8. Heatmap ===
     st.subheader("🌡️ Pt Particle Distribution Heatmap")
