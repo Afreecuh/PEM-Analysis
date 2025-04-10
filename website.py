@@ -684,6 +684,14 @@ def download_report_page():
 # In[ ]:
 
 
+import numpy as np
+import cv2
+import streamlit as st
+import plotly.graph_objects as go
+from PIL import Image
+from scipy.ndimage import gaussian_filter  # 確保有導入 gaussian_filter
+
+# 3D可視化：使用 intensity 同時決定 z 軸與顏色（反轉灰階 colormap + smoothing）
 def view_3d_model():
     st.title("🧊 3D Grayscale Intensity Viewer")
 
@@ -693,7 +701,6 @@ def view_3d_model():
 
     # ✅ Apply scale bar crop
     image_cropped = auto_crop_scale_bar(np.array(st.session_state.image.convert("L")))
-    st.write(f"Image shape after cropping: {image_cropped.shape}")
 
     # ✅ Gaussian smoothing slider
     smoothing_sigma = st.slider("🧹 Smoothing (Gaussian Blur σ)", min_value=0.0, max_value=5.0, value=0.0, step=0.1)
@@ -702,11 +709,6 @@ def view_3d_model():
     image_gray = image_cropped
     if smoothing_sigma > 0:
         image_gray = gaussian_filter(image_gray, sigma=smoothing_sigma)
-
-    # Debugging the smoothing process
-    st.write(f"Image shape after Gaussian smoothing: {image_gray.shape}")
-    st.write(f"Min intensity value after smoothing: {np.min(image_gray)}")
-    st.write(f"Max intensity value after smoothing: {np.max(image_gray)}")
 
     height, width = image_gray.shape
     x_vals, y_vals, z_vals = [], [], []
@@ -719,9 +721,6 @@ def view_3d_model():
                 y_vals.append(y)
                 z_vals.append(intensity)
 
-    # Debugging the number of points collected
-    st.write(f"Number of points collected: {len(x_vals)}")
-
     fig = go.Figure(data=[go.Scatter3d(
         x=x_vals,
         y=y_vals,
@@ -730,7 +729,7 @@ def view_3d_model():
         marker=dict(
             size=1,
             color=z_vals,
-            colorscale="Greys_r",  # ✅ 反轉灰階：0=黑，255=白
+            colorscale="Greys_r",  # 反轉灰階：0=黑，255=白
             opacity=0.8,
             colorbar=dict(title="Intensity")
         )
@@ -756,6 +755,7 @@ def view_3d_model():
     • White = high intensity  
     • Adjust smoothing to reduce noise and enhance topography.
     """)
+
 
 
 # In[3]:
