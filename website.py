@@ -684,10 +684,10 @@ def download_report_page():
 # In[ ]:
 
 
+# 3D可視化：使用 intensity 同時決定 z 軸與顏色（反轉灰階 colormap + smoothing）
 def view_3d_model():
     st.title("🧊 3D Grayscale Intensity Viewer")
 
-    # 確認是否已經上傳影像
     if st.session_state.image is None:
         st.error("⚠️ Please upload an image first!")
         return
@@ -700,13 +700,15 @@ def view_3d_model():
     if smoothing_sigma > 0:
         image_gray = gaussian_filter(image_gray, sigma=smoothing_sigma)
 
+    # Get the image dimensions
     height, width = image_gray.shape
     x_vals, y_vals, z_vals = [], [], []
 
+    # 遍歷每個像素
     for y in range(height):
         for x in range(width):
             intensity = image_gray[y, x]
-            if intensity > 0:  # 確保強度為正
+            if intensity > 0:  # 確保強度大於0的像素才顯示
                 x_vals.append(x)
                 y_vals.append(y)
                 z_vals.append(intensity)
