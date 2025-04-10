@@ -200,23 +200,20 @@ def analyze_porosity_page():
 
     # --- Pore Area Distribution ---
     st.subheader("📊 Pore Area Distribution Histogram")
-    # Create the histogram
-    hist_area = np.histogram(all_pore_areas_nm2, bins=20)
-    area_bins = hist_area[1]
-    area_counts = hist_area[0]
+    fig_area = px.histogram(
+        x=all_pore_areas_nm2,
+        nbins=20,
+        labels={"x": "Pore Area (nm²)", "y": "Count"},
+        title="Pore Area Distribution"
+    ).update_traces(marker_color="steelblue")
 
-    # Filter out bins with counts less than 3
-    filtered_area = [all_pore_areas_nm2[i] for i in range(len(all_pore_areas_nm2)) if area_counts[np.digitize(all_pore_areas_nm2[i], area_bins) - 1] >= 3]
-
-    st.plotly_chart(
-        px.histogram(
-            x=filtered_area,
-            nbins=20,
-            labels={"x": "Pore Area (nm²)", "y": "Count"},
-            title="Pore Area Distribution (Filtered)"
-        ).update_traces(marker_color="steelblue"),
-        use_container_width=True
-    )
+    area_hist_data = fig_area.data[0]
+    area_x = area_hist_data.x
+    area_y = area_hist_data.y
+    mask = area_y > 10
+    fig_area.data[0].x = area_x[mask]
+    fig_area.data[0].y = area_y[mask]
+    st.plotly_chart(fig_area, use_container_width=True)
 
     # --- Pore Diameter Distribution Histogram (Grouped) ---
     st.subheader("📊 Pore Diameter Distribution Histogram")
@@ -362,46 +359,28 @@ def analyze_pt_particles_page():
              caption="Green: CCL-detected | Red: NCC-matched",
              use_container_width=True)
 
-    # === 6. Grain Size Histogram (Filtered) ===
+    # === 6. Grain Size Histogram ===
     st.subheader("📊 Grain Size Histogram (Pt Particle Diameter)")
     all_grain_sizes = ccl_grain_sizes + ncc_grain_sizes
-
-    # Filter out the bins with counts less than 3
-    grain_hist = np.histogram(all_grain_sizes, bins=20)
-    grain_bins = grain_hist[1]
-    grain_counts = grain_hist[0]
-
-    # Filter grains with count >= 3
-    filtered_grain_sizes = [size for size in all_grain_sizes if grain_counts[np.digitize(size, grain_bins) - 1] >= 3]
-
     st.plotly_chart(
         px.histogram(
-            x=filtered_grain_sizes,
+            x=all_grain_sizes,
             nbins=20,
             labels={"x": "Diameter (nm)", "y": "Count"},
-            title="Grain Size Distribution of Pt Particles (Filtered)"
+            title="Grain Size Distribution of Pt Particles"
         ).update_traces(marker_color="indigo"),
         use_container_width=True
     )
 
-    # === 7. Surface Area Histogram (Filtered) ===
-    st.subheader("📊 Surface Area Histogram (Filtered)")
+    # === 7. Surface Area Histogram ===
+    st.subheader("📊 Surface Area Histogram")
     all_surface_areas = ccl_surface_areas + ncc_surface_areas
-
-    # Filter out the bins with counts less than 3
-    surface_hist = np.histogram(all_surface_areas, bins=20)
-    surface_bins = surface_hist[1]
-    surface_counts = surface_hist[0]
-
-    # Filter surface areas with count >= 3
-    filtered_surface_areas = [area for area in all_surface_areas if surface_counts[np.digitize(area, surface_bins) - 1] >= 3]
-
     st.plotly_chart(
         px.histogram(
-            x=filtered_surface_areas,
+            x=all_surface_areas,
             nbins=20,
             labels={"x": "Surface Area (nm²)", "y": "Count"},
-            title="Spherical Surface Area Distribution (Filtered)"
+            title="Spherical Surface Area Distribution"
         ).update_traces(marker_color="darkorange"),
         use_container_width=True
     )
