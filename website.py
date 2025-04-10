@@ -684,58 +684,44 @@ def download_report_page():
 # In[ ]:
 
 
-import numpy as np
-import cv2
-import streamlit as st
-import plotly.graph_objects as go
-from PIL import Image
-from scipy.ndimage import gaussian_filter
-
-# 3D可視化：使用 intensity 同時決定 z 軸與顏色（反轉灰階 colormap + smoothing）
 def view_3d_model():
     st.title("🧊 3D Grayscale Intensity Viewer")
 
-    # Debug: 檢查是否有上傳圖片
     if st.session_state.image is None:
         st.error("⚠️ Please upload an image first!")
         return
+
+    # ✅ Apply scale bar crop
+    image_cropped = auto_crop_scale_bar(np.array(st.session_state.image.convert("L")))
+    st.write(f"Image shape after cropping: {image_cropped.shape}")
 
     # ✅ Gaussian smoothing slider
     smoothing_sigma = st.slider("🧹 Smoothing (Gaussian Blur σ)", min_value=0.0, max_value=5.0, value=0.0, step=0.1)
 
     # 灰階轉換與模糊處理
-    image_gray = np.array(st.session_state.image.convert("L"))
-    
-    # Debug: 檢查灰階圖像轉換結果
-    st.write(f"Image shape: {image_gray.shape}")  # 打印圖片大小
-    st.image(image_gray, caption="Grayscale Image", use_container_width=True)  # 顯示灰階圖像
-    
+    image_gray = image_cropped
     if smoothing_sigma > 0:
         image_gray = gaussian_filter(image_gray, sigma=smoothing_sigma)
-        st.write(f"Smoothing applied with sigma = {smoothing_sigma}")  # 打印是否有應用高斯平滑
-    
-    # Get the image dimensions
+
+    # Debugging the smoothing process
+    st.write(f"Image shape after Gaussian smoothing: {image_gray.shape}")
+    st.write(f"Min intensity value after smoothing: {np.min(image_gray)}")
+    st.write(f"Max intensity value after smoothing: {np.max(image_gray)}")
+
     height, width = image_gray.shape
     x_vals, y_vals, z_vals = [], [], []
 
-    # Debug: 檢查強度分布
-    st.write("Intensity range: ", np.min(image_gray), " to ", np.max(image_gray))  # 打印強度範圍
-    
-    # 遍歷每個像素
     for y in range(height):
         for x in range(width):
             intensity = image_gray[y, x]
-            if intensity > 0:  # 確保強度大於0的像素才顯示
+            if intensity > 0:  # 只保留有灰階值的點
                 x_vals.append(x)
                 y_vals.append(y)
                 z_vals.append(intensity)
 
-    # Debug: 檢查 x, y, z 值
-    st.write(f"Number of points: {len(x_vals)}")  # 打印有多少個有效點
-    if len(x_vals) > 10:  # 如果點太多，只顯示部分
-        st.write(f"First 10 points (x, y, intensity): {list(zip(x_vals[:10], y_vals[:10], z_vals[:10]))}")
+    # Debugging the number of points collected
+    st.write(f"Number of points collected: {len(x_vals)}")
 
-    # 生成3D視覺化圖
     fig = go.Figure(data=[go.Scatter3d(
         x=x_vals,
         y=y_vals,
@@ -743,8 +729,8 @@ def view_3d_model():
         mode='markers',
         marker=dict(
             size=1,
-            color=z_vals,  # 顏色基於灰階強度
-            colorscale="Greys_r",  # 反轉灰階：0=黑，255=白
+            color=z_vals,
+            colorscale="Greys_r",  # ✅ 反轉灰階：0=黑，255=白
             opacity=0.8,
             colorbar=dict(title="Intensity")
         )
@@ -763,7 +749,6 @@ def view_3d_model():
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # 提供給使用者的說明文字
     st.markdown(f"""
     🎨 Each point's depth and color are based on grayscale intensity (0–255), smoothed using Gaussian σ = `{smoothing_sigma}`.
 
@@ -771,13 +756,6 @@ def view_3d_model():
     • White = high intensity  
     • Adjust smoothing to reduce noise and enhance topography.
     """)
-
-# debug entry point
-def debug_process():
-    if st.session_state.image is None:
-        st.error("⚠️ Please upload an image first!")
-        return
-    view_3d_model()
 
 
 # In[3]:
