@@ -684,17 +684,10 @@ def download_report_page():
 # In[ ]:
 
 
-import numpy as np
-import cv2
-import streamlit as st
-import plotly.graph_objects as go
-from PIL import Image
-from scipy.ndimage import gaussian_filter
-
-# 3D可視化：使用 intensity 同時決定 z 軸與顏色（反轉灰階 colormap + smoothing）
 def view_3d_model():
     st.title("🧊 3D Grayscale Intensity Viewer")
 
+    # 確認是否已經上傳影像
     if st.session_state.image is None:
         st.error("⚠️ Please upload an image first!")
         return
@@ -713,11 +706,12 @@ def view_3d_model():
     for y in range(height):
         for x in range(width):
             intensity = image_gray[y, x]
-            if intensity > 0:
+            if intensity > 0:  # 確保強度為正
                 x_vals.append(x)
                 y_vals.append(y)
                 z_vals.append(intensity)
 
+    # 生成3D視覺化圖
     fig = go.Figure(data=[go.Scatter3d(
         x=x_vals,
         y=y_vals,
@@ -725,8 +719,8 @@ def view_3d_model():
         mode='markers',
         marker=dict(
             size=1,
-            color=z_vals,
-            colorscale="Greys_r",  # ✅ 反轉灰階：0=黑，255=白
+            color=z_vals,  # 顏色基於灰階強度
+            colorscale="Greys_r",  # 反轉灰階：0=黑，255=白
             opacity=0.8,
             colorbar=dict(title="Intensity")
         )
@@ -745,6 +739,7 @@ def view_3d_model():
 
     st.plotly_chart(fig, use_container_width=True)
 
+    # 提供給使用者的說明文字
     st.markdown(f"""
     🎨 Each point's depth and color are based on grayscale intensity (0–255), smoothed using Gaussian σ = `{smoothing_sigma}`.
 
