@@ -202,20 +202,10 @@ def analyze_porosity_page():
     st.subheader("📊 Pore Area Distribution Histogram")
     fig_area = px.histogram(
         x=all_pore_areas_nm2,
-        nbins=20,
+        nbins=40,  # Increased bin count for more detailed granularity
         labels={"x": "Pore Area (nm²)", "y": "Count"},
         title="Pore Area Distribution"
     ).update_traces(marker_color="steelblue")
-
-    # --- Ensure that area_y is not None before applying mask ---
-    area_hist_data = fig_area.data[0]
-    area_x = area_hist_data.x
-    area_y = area_hist_data.y
-
-    if area_y is not None:  # Check if area_y is not None before filtering
-        mask = area_y > 10
-        fig_area.data[0].x = area_x[mask]
-        fig_area.data[0].y = area_y[mask]
 
     st.plotly_chart(fig_area, use_container_width=True)
 
@@ -223,9 +213,9 @@ def analyze_porosity_page():
     st.subheader("📊 Pore Diameter Distribution Histogram")
     fig = go.Figure()
     if primary_diameters:
-        fig.add_trace(go.Histogram(x=primary_diameters, nbinsx=15, name="Primary (≤10 nm)", marker_color="blue"))
+        fig.add_trace(go.Histogram(x=primary_diameters, nbinsx=20, name="Primary (≤10 nm)", marker_color="blue"))
     if secondary_diameters:
-        fig.add_trace(go.Histogram(x=secondary_diameters, nbinsx=15, name="Secondary (≥10 nm)", marker_color="orange"))
+        fig.add_trace(go.Histogram(x=secondary_diameters, nbinsx=20, name="Secondary (≥10 nm)", marker_color="orange"))
     fig.update_layout(
         barmode="group",
         title="Pore Diameter Distribution (Grouped)",
@@ -365,15 +355,11 @@ def analyze_pt_particles_page():
 
     # === 6. Grain Size Histogram ===
     st.subheader("📊 Grain Size Histogram (Pt Particle Diameter)")
-
-    # Filter out data where count < 10
     all_grain_sizes = ccl_grain_sizes + ncc_grain_sizes
-    all_grain_sizes = [size for size in all_grain_sizes if all_grain_sizes.count(size) >= 10]
-
     st.plotly_chart(
         px.histogram(
             x=all_grain_sizes,
-            nbins=20,
+            nbins=40,  # Increase number of bins for finer granularity
             labels={"x": "Diameter (nm)", "y": "Count"},
             title="Grain Size Distribution of Pt Particles"
         ).update_traces(marker_color="indigo"),
@@ -382,15 +368,11 @@ def analyze_pt_particles_page():
 
     # === 7. Surface Area Histogram ===
     st.subheader("📊 Surface Area Histogram")
-
-    # Filter out data where count < 10
     all_surface_areas = ccl_surface_areas + ncc_surface_areas
-    all_surface_areas = [area for area in all_surface_areas if all_surface_areas.count(area) >= 10]
-
     st.plotly_chart(
         px.histogram(
             x=all_surface_areas,
-            nbins=20,
+            nbins=40,  # Increase number of bins for finer granularity
             labels={"x": "Surface Area (nm²)", "y": "Count"},
             title="Spherical Surface Area Distribution"
         ).update_traces(marker_color="darkorange"),
