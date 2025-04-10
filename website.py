@@ -851,7 +851,7 @@ def upload_and_mark_scale():
         sei_img = Image.open(sei_file).convert("RGB")
         bse_img = Image.open(bse_file).convert("RGB")
 
-        st.session_state.image = sei_img  # 用 SEI 當 base 顯示用
+        st.session_state.image = sei_img  # 用 SEI 當顯示主圖
         fig = plot_image_with_annotations()
         st.plotly_chart(fig, use_container_width=True)
 
@@ -865,17 +865,42 @@ def upload_and_mark_scale():
             y1 = st.number_input("First point Y", min_value=0, step=1, key="y1_input")
             y2 = st.number_input("Second point Y", min_value=0, step=1, key="y2_input")
 
-        # ✅ 點擊按鈕後記錄進 session
+        # ✅ 點擊按鈕後記錄座標
         if st.button("Mark Scale", key="mark_scale_button"):
             if x1 != x2 or y1 != y2:
                 st.session_state.scale_coords = [(x1, y1), (x2, y2)]
-                st.success(f"✅ Selected scale range: {abs(x2 - x1):.2f} px")
+                scale_pixels = abs(x2 - x1)
+                st.session_state.scale_pixels = scale_pixels
+                st.success(f"✅ Selected scale range: {scale_pixels:.2f} px")
                 st.rerun()
             else:
                 st.error("⚠️ The two coordinates cannot be identical. Please re-enter.")
 
-        # ✅ 處理實際 µm 長度輸入 → 裁圖 & 存檔
-        handle_scale_annotation()
+        # ✅ 比例尺長度輸入與計算
+        if len(st.session_state.scale_coords) == 2:
+            scale_length_input = st.text_input("Enter actual scale length (µm):", "10")
+
+            if st.button("Calculate µm/px"):
+                if not scale_length_input.strip():
+                    st.error("⚠️ Please input a valid number before calculating.")
+                else:
+                    try:
+                        scale_length_um = float(scale_length_input)
+                        scale_pixels = st.session_state.scale_pixels
+                        pixel_to_um = scale_length_um / scale_pixels
+                        st.session_state.scale_length_um = scale_length_um
+                        st.session_state.pixel_to_um = pixel_to_um
+                        st.success(f"📏 Result: {scale_length_um:.2f} µm ({pixel_to_um:.4f} µm/px)")
+
+                        # ✅ 裁剪並儲存兩張圖片
+                        sei_crop = auto_crop_scale_bar(np.array(sei_img.convert("L")))
+                        bse_crop = auto_crop_scale_bar(np.array(bse_img.convert("L")))
+                        st.session_state.image_sei = Image.fromarray(sei_crop)
+                        st.session_state.image_bse = Image.fromarray(bse_crop)
+                        st.rerun()
+
+                    except ValueError:
+                        st.error("⚠️ Invalid input. Please enter a number.")
 
 
 # **Main Application Entry Point**
