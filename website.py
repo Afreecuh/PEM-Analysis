@@ -207,12 +207,16 @@ def analyze_porosity_page():
         title="Pore Area Distribution"
     ).update_traces(marker_color="steelblue")
 
+    # --- Ensure that area_y is not None before applying mask ---
     area_hist_data = fig_area.data[0]
     area_x = area_hist_data.x
     area_y = area_hist_data.y
-    mask = area_y > 10  # Filter out bins with count <= 10
-    fig_area.data[0].x = area_x[mask]
-    fig_area.data[0].y = area_y[mask]
+
+    if area_y is not None:  # Check if area_y is not None before filtering
+        mask = area_y > 10
+        fig_area.data[0].x = area_x[mask]
+        fig_area.data[0].y = area_y[mask]
+
     st.plotly_chart(fig_area, use_container_width=True)
 
     # --- Pore Diameter Distribution Histogram (Grouped) ---
@@ -361,7 +365,11 @@ def analyze_pt_particles_page():
 
     # === 6. Grain Size Histogram ===
     st.subheader("📊 Grain Size Histogram (Pt Particle Diameter)")
+
+    # Filter out data where count < 10
     all_grain_sizes = ccl_grain_sizes + ncc_grain_sizes
+    all_grain_sizes = [size for size in all_grain_sizes if all_grain_sizes.count(size) >= 10]
+
     st.plotly_chart(
         px.histogram(
             x=all_grain_sizes,
@@ -374,7 +382,11 @@ def analyze_pt_particles_page():
 
     # === 7. Surface Area Histogram ===
     st.subheader("📊 Surface Area Histogram")
+
+    # Filter out data where count < 10
     all_surface_areas = ccl_surface_areas + ncc_surface_areas
+    all_surface_areas = [area for area in all_surface_areas if all_surface_areas.count(area) >= 10]
+
     st.plotly_chart(
         px.histogram(
             x=all_surface_areas,
