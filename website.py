@@ -412,7 +412,7 @@ def analyze_pt_particles_page():
     st.subheader("📋 Pt Particle Summary")
     all_areas_nm2 = ccl_areas_nm2 + ncc_areas_nm2
     total_surface_area_nm2 = np.sum(all_surface_areas)
-    effective_surface_area_ratio = total_surface_area_nm2 / total_area_image_nm2  # 保留比例不變
+    effective_surface_area_ratio = total_surface_area_nm2 / total_area_image_nm2
     avg_grain_size = np.mean(all_grain_sizes)
     mean_area = np.mean(all_areas_nm2)
 
@@ -426,8 +426,8 @@ def analyze_pt_particles_page():
         "Effective Pt particle surface (m²) per unit area of CL (m²)": effective_surface_area_ratio
     }
 
-df_summary = pd.DataFrame(summary, index=["Result"])
-st.dataframe(df_summary)
+    df_summary = pd.DataFrame(summary, index=["Result"])
+    st.dataframe(df_summary)
 
     # Store results in session
     st.session_state.pt_summary = summary
