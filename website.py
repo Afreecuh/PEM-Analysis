@@ -280,7 +280,8 @@ def analyze_pt_particles_page():
     layer = 3
     nm_per_pixel = st.session_state.pixel_to_um * 1000
     area_conversion = nm_per_pixel ** 2
-    total_area_image_nm2 = img_cropped.shape[0] * img_cropped.shape[1] * area_conversion
+    image_h, image_w = img_cropped.shape
+    total_area_image_nm2 = image_h * image_w * area_conversion
 
     particles_mask = (segmented == layer)
     particles_mask = remove_small_objects(particles_mask, min_size=10)
@@ -353,37 +354,13 @@ def analyze_pt_particles_page():
              caption="Green: CCL-detected | Red: NCC-matched",
              use_container_width=True)
 
-    # === 6. Grain Size Histogram ===
-    st.subheader("📊 Grain Size Histogram (Pt Particle Diameter)")
-    all_grain_sizes = ccl_grain_sizes + ncc_grain_sizes
-    st.plotly_chart(
-        px.histogram(
-            x=all_grain_sizes,
-            nbins=40,  # Increase number of bins for finer granularity
-            labels={"x": "Diameter (nm)", "y": "Count"},
-            title="Grain Size Distribution of Pt Particles"
-        ).update_traces(marker_color="indigo"),
-        use_container_width=True
-    )
-
-    # === 7. Surface Area Histogram ===
-    st.subheader("📊 Surface Area Histogram")
-    all_surface_areas = ccl_surface_areas + ncc_surface_areas
-    st.plotly_chart(
-        px.histogram(
-            x=all_surface_areas,
-            nbins=40,  # Increase number of bins for finer granularity
-            labels={"x": "Surface Area (nm²)", "y": "Count"},
-            title="Spherical Surface Area Distribution"
-        ).update_traces(marker_color="darkorange"),
-        use_container_width=True
-    )
-
-    # === 8. Heatmap ===
+    # === 6. Heatmap with Aspect Ratio ===
     st.subheader("🌡️ Pt Particle Distribution Heatmap")
-    grid_rows, grid_cols = 10, 10
-    cell_h = img_cleaned.shape[0] // grid_rows
-    cell_w = img_cleaned.shape[1] // grid_cols
+    aspect_ratio = image_w / image_h
+    grid_cols = 10
+    grid_rows = int(round(grid_cols / aspect_ratio))
+    cell_h = image_h // grid_rows
+    cell_w = image_w // grid_cols
     heatmap = np.zeros((grid_rows, grid_cols), dtype=int)
 
     for p in props:
@@ -401,15 +378,37 @@ def analyze_pt_particles_page():
 
     fig_heat = px.imshow(heatmap, color_continuous_scale="inferno")
     fig_heat.update_layout(
-        title="Pt Particle Heatmap (10x10 Grid)",
+        title="Pt Particle Heatmap (Rectangular Grid)",
         xaxis_title="Column",
         yaxis_title="Row"
     )
     st.plotly_chart(fig_heat, use_container_width=True)
 
-    # === 9. Summary Table ===
+    # === 7. Surface Area-Weighted Grain Size Histogram ===
+    st.subheader("📊 Surface Area-Weighted Particle Size Histogram")
+    grain_sizes = np.array(ccl_grain_sizes + ncc_grain_sizes)
+    surface_areas = np.array(ccl_surface_areas + ncc_surface_areas) * 1e-18  # convert from nm² to m²
+    bins = np.linspace(0, np.max(grain_sizes), 20)
+    indices = np.digitize(grain_sizes, bins)
+    weighted_surface = [np.sum(surface_areas[indices == i]) for i in range(1, len(bins))]
+
+    fig_weighted = go.Figure(data=[
+        go.Bar(x=bins[:-1], y=weighted_surface)
+    ])
+    fig_weighted.update_layout(
+        title="Surface Area-Weighted Particle Size Distribution",
+        xaxis_title="Particle Diameter (nm)",
+        yaxis_title="Surface Area (m²)",
+        yaxis_type="log"
+    )
+    st.plotly_chart(fig_weighted, use_container_width=True)
+
+    # === 8. Summary Table ===
     st.subheader("📋 Pt Particle Summary")
     all_areas_nm2 = ccl_areas_nm2 + ncc_areas_nm2
+    all_surface_areas = ccl_surface_areas + ncc_surface_areas
+    all_grain_sizes = ccl_grain_sizes + ncc_grain_sizes
+
     total_surface_area_nm2 = np.sum(all_surface_areas)
     effective_surface_area_ratio = total_surface_area_nm2 / total_area_image_nm2
     avg_grain_size = np.mean(all_grain_sizes)
