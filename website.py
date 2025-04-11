@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[3]:
 
 
 import streamlit as st
@@ -510,6 +510,7 @@ def show_user_guide():
 
 
 def generate_pdf():
+    import textwrap
     client = openai
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=letter)
@@ -577,7 +578,7 @@ def generate_pdf():
 
     # === BSE Image & Pt Particle Summary ===
     if st.session_state.get("image_bse"):
-        if y < 200:  # 換頁避免蓋到
+        if y < 200:
             pdf.showPage()
             y = 750
         pdf.setFont("Helvetica-Bold", 14)
@@ -594,6 +595,7 @@ def generate_pdf():
     pdf.drawString(50, y, "Pt Particle Summary")
     y -= 20
     pdf.setFont("Helvetica", 12)
+
     def write_line(label, key):
         nonlocal y
         val = pt_summary.get(key, None)
@@ -602,6 +604,7 @@ def generate_pdf():
                 val = f"{val:.2f}"
             pdf.drawString(50, y, f"{label}: {val}")
             y -= 15
+
     write_line("Total Pt Particles", "Total Particles")
     write_line("CCL Particles", "CCL Particles")
     write_line("NCC Particles", "NCC Particles")
@@ -609,12 +612,13 @@ def generate_pdf():
     write_line("Surface Area per nm²", "Effective Surface Area per nm²")
     y -= 10
     pdf.line(50, y, 550, y)
-    y -= 30
 
-    # === AI Commentary ===
+    # === AI Commentary（第二頁）===
+    pdf.showPage()
+    y = 750
     pdf.setFont("Helvetica-Bold", 14)
     pdf.drawString(50, y, "AI Commentary")
-    y -= 20
+    y -= 25
     pdf.setFont("Helvetica", 11)
 
     poro_display = f"{poro_ratio:.2f}%" if poro_ratio is not None else "N/A"
@@ -639,13 +643,16 @@ def generate_pdf():
     except Exception as e:
         ai_comment = "*AI comment unavailable due to quota limit.*"
 
-    for line in ai_comment.split("\n"):
-        if y < 50:
-            pdf.showPage()
-            y = 750
-            pdf.setFont("Helvetica", 11)
-        pdf.drawString(50, y, line.strip())
-        y -= 15
+    # 自動換行顯示
+    for para in ai_comment.split("\n"):
+        lines = textwrap.wrap(para.strip(), width=90)  # 控制一行不超過頁寬
+        for line in lines:
+            if y < 50:
+                pdf.showPage()
+                y = 750
+                pdf.setFont("Helvetica", 11)
+            pdf.drawString(50, y, line)
+            y -= 15
 
     pdf.save()
     buffer.seek(0)
