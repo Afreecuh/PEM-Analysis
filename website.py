@@ -378,7 +378,7 @@ def analyze_pt_particles_page():
 
     fig_heat = px.imshow(heatmap, color_continuous_scale="inferno")
     fig_heat.update_layout(
-        title="Pt Particle Heatmap (Rectangular Grid)",
+        title=f"Pt Particle Heatmap ({grid_rows}x{grid_cols} Grid)",
         xaxis_title="Column",
         yaxis_title="Row"
     )
