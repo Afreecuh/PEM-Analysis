@@ -321,7 +321,7 @@ def analyze_pt_particles_page():
         minr, minc, maxr, maxc = best_region.bbox
         template = img_cleaned[minr:maxr, minc:maxc]
         result = cv2.matchTemplate(img_cleaned, template, cv2.TM_CCOEFF_NORMED)
-        threshold_ncc = 0.6
+        threshold_ncc = 0.7
         loc = np.where(result >= threshold_ncc)
         h, w = template.shape
 
@@ -626,7 +626,16 @@ def generate_pdf():
     Based on the following SEM analysis results, write a short expert commentary on:
     - What the porosity and Pt particle size may imply
     - Implications for catalyst performance or structural integrity
-
+    
+    Please retain the current evaluation format, including a paragraph such as:
+    "The average grain size of the Pt particles is relatively small at X nm, which can be beneficial for catalytic surface area but may compromise durability over time."
+    
+    In addition, apply the following logic based on grain size to generate a recommendation:
+    - If the average grain size is above 3.5 nm, suggest reducing it to improve catalytic activity.
+    - If the average grain size is below 3.5 nm, suggest increasing it slightly to improve durability.
+    - Note: Increasing grain size enhances durability, especially from below 3 nm to 5 nm, where durability improves steeply. Beyond 5 nm, the improvement follows a decreasing exponential trend.
+    - Conclude by stating that 5 nm is the optimal trade-off point between performance and durability. If the grain size is not 5 nm, recommend adjusting toward that target.
+    
     Porosity: {poro_display}
     Pt Particles: {pt_summary.get("Total Particles", "N/A")}
     Average Grain Size: {pt_summary.get("Average Grain Size (nm)", "N/A")} nm
