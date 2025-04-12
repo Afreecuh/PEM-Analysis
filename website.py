@@ -627,12 +627,12 @@ def generate_pdf():
     - What the porosity and Pt particle size may imply
     - Implications for catalyst performance or structural integrity
     
-    Please retain the current evaluation format, including a paragraph such as:
+    Only include the following evaluation sentence **if the average grain size is below 5 nm**:
     "The average grain size of the Pt particles is relatively small at X nm, which can be beneficial for catalytic surface area but may compromise durability over time."
     
-    In addition, apply the following logic based on grain size to generate a recommendation:
+    Then, apply the following logic based on grain size to generate a performance recommendation:
     - If the average grain size is above 3.5 nm, suggest reducing it to improve catalytic activity.
-    - If the average grain size is below 3.5 nm, suggest increasing it slightly to improve durability.
+    - If the average grain size is below 3.5 nm, suggest increasing it slightly to improve performance.
     - Note: Increasing grain size enhances durability, especially from below 3 nm to 5 nm, where durability improves steeply. Beyond 5 nm, the improvement follows a decreasing exponential trend.
     - Conclude by stating that 5 nm is the optimal trade-off point between performance and durability. If the grain size is not 5 nm, recommend adjusting toward that target.
     
