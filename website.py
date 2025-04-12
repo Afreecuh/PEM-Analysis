@@ -338,21 +338,21 @@ def analyze_pt_particles_page():
 
     image_np = np.array(st.session_state.image_bse.convert("L"))
 
-    # === 1. Multi-Otsu Segmentation ===
+    # === 1. Crop and FFT Background Removal ===
     img_cropped = auto_crop_scale_bar(image_np)
-    thresholds = threshold_multiotsu(img_cropped, classes=4)
-    segmented = np.digitize(img_cropped, bins=thresholds)
-
-    st.subheader("🧪 Multi-Otsu Segmentation Result")
-    st.image(segmented * 85, caption="Segmented Classes (4 classes)", use_container_width=True, clamp=True)
-
-    # === 2. FFT Background Removal ===
     f = fft2(img_cropped)
     fshift = fftshift(f)
     crow, ccol = fshift.shape[0] // 2, fshift.shape[1] // 2
     fshift[crow-10:crow+10, ccol-10:ccol+10] *= 0.1
     img_cleaned = np.abs(ifft2(ifftshift(fshift)))
     img_cleaned = exposure.rescale_intensity(img_cleaned, in_range='image', out_range=(0, 255)).astype(np.uint8)
+
+    # === 2. Multi-Otsu Segmentation on img_cleaned ===
+    thresholds = threshold_multiotsu(img_cleaned, classes=4)
+    segmented = np.digitize(img_cleaned, bins=thresholds)
+
+    st.subheader("🧪 Multi-Otsu Segmentation Result")
+    st.image(segmented * 85, caption="Segmented Classes (4 classes)", use_container_width=True, clamp=True)
 
     # === 3. Particle Detection (Layer 3) ===
     layer = 3
@@ -406,7 +406,7 @@ def analyze_pt_particles_page():
         for pt in zip(*loc[::-1]):
             cy = pt[1] + h // 2
             cx = pt[0] + w // 2
-            if not ccl_mask[cy, cx]:
+            if int(ccl_mask[cy, cx]) == 0:  # 修正點：確保排除 CCL mask 中的點
                 area_nm2 = np.count_nonzero(template) * area_conversion
                 d = 2 * np.sqrt(area_nm2 / np.pi)
                 surface_area = np.pi * d**2
@@ -462,10 +462,10 @@ def analyze_pt_particles_page():
     )
     st.plotly_chart(fig_heat, use_container_width=True)
 
-    # === 7. Surface Area-Weighted Grain Size Histogram ===
+    # === 7. Surface Area-Weighted Particle Size Histogram ===
     st.subheader("📊 Surface Area-Weighted Particle Size Histogram")
     grain_sizes = np.array(ccl_grain_sizes + ncc_grain_sizes)
-    surface_areas = np.array(ccl_surface_areas + ncc_surface_areas) * 1e-18  # convert from nm² to m²
+    surface_areas = np.array(ccl_surface_areas + ncc_surface_areas) * 1e-18
     bins = np.linspace(0, np.max(grain_sizes), 20)
     indices = np.digitize(grain_sizes, bins)
     weighted_surface = [np.sum(surface_areas[indices == i]) for i in range(1, len(bins))]
