@@ -720,10 +720,10 @@ def downsample_image(image, factor=4):
     Downsamples the image by a given factor (e.g., factor=4 will reduce the resolution by 4x).
     """
     width, height = image.size
-    new_size = (width // factor, height // factor)  # Calculate new size by the factor
+    new_size = (width // factor, height // factor)
     return image.resize(new_size, Image.Resampling.LANCZOS)
 
-# 3D可視化：使用 intensity 同時決定 z 軸與顏色（反轉灰階 colormap + smoothing）
+# === 3D Visualization ===
 def view_3d_model():
     st.title("🧊 3D Grayscale Intensity Viewer")
 
@@ -734,14 +734,12 @@ def view_3d_model():
     # ✅ Gaussian smoothing slider
     smoothing_sigma = st.slider("🧹 Smoothing (Gaussian Blur σ)", min_value=0.0, max_value=5.0, value=0.0, step=0.1)
 
-    # 灰階轉換與模糊處理
-    image_gray = np.array(st.session_state.image.convert("L"))
+    # === Downsample and smooth ===
+    image_downsampled = downsample_image(st.session_state.image, factor=4)
+    image_gray = np.array(image_downsampled.convert("L"))
+
     if smoothing_sigma > 0:
         image_gray = gaussian_filter(image_gray, sigma=smoothing_sigma)
-
-    # === Downsample the image for performance improvement ===
-    image_gray = downsample_image(st.session_state.image, factor=4)  # Example with factor = 4
-    image_gray = np.array(image_gray.convert("L"))
 
     height, width = image_gray.shape
     x_vals, y_vals, z_vals = [], [], []
@@ -762,7 +760,7 @@ def view_3d_model():
         marker=dict(
             size=1,
             color=z_vals,
-            colorscale="Greys_r",  # ✅ 反轉灰階：0=黑，255=白
+            colorscale="Greys_r",
             opacity=0.8,
             colorbar=dict(title="Intensity")
         )
@@ -776,7 +774,7 @@ def view_3d_model():
             camera=dict(eye=dict(x=1.5, y=1.5, z=1.5))
         ),
         margin=dict(l=0, r=0, b=0, t=40),
-        title="3D Visualization Based on Grayscale Intensity"
+        title=f"3D Visualization Based on Grayscale Intensity (σ = {smoothing_sigma})"
     )
 
     st.plotly_chart(fig, use_container_width=True)
@@ -789,7 +787,7 @@ def view_3d_model():
     • Adjust smoothing to reduce noise and enhance topography.
     """)
 
-# debug entry point
+# === Optional Debug Entry Point ===
 def debug_process():
     if st.session_state.image is None:
         st.error("⚠️ Please upload an image first!")
