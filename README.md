@@ -1,13 +1,13 @@
 # PEM Analysis Toolkit
 
-A Streamlit application that supports proton-exchange membrane (PEM) imaging workflows by guiding users from scale-bar calibration through porosity and platinum (Pt) particle analysis to automated report generation with AI commentary.【F:website.py†L450-L492】【F:website.py†L928-L959】
+A Streamlit application that supports proton-exchange membrane (PEM) imaging workflows by guiding users from scale-bar calibration through porosity and platinum (Pt) particle analysis to automated report generation with AI commentary.
 
 ## Features
-- **Scale bar annotation:** Upload secondary electron (SEI) and backscattered electron (BSE) images, mark two points on the scale bar, and compute the pixel-to-micron conversion while automatically cropping the scale bar from both images.【F:website.py†L40-L115】【F:website.py†L879-L918】
-- **Porosity quantification:** Enhance the SEI image, run multi-Otsu segmentation, classify pores into primary and secondary groups, and visualize distributions alongside summary metrics (porosity %, mean diameters, ratio).【F:website.py†L137-L236】
-- **Pt particle detection:** Suppress background with FFT, segment Pt particles, combine connected-component labeling (CCL) with normalized cross-correlation (NCC) to capture different particle sizes, and render heatmaps and surface-area-weighted histograms.【F:website.py†L254-L399】
+- **Scale bar annotation:** Upload secondary electron (SEI) and backscattered electron (BSE) images, mark two points on the scale bar, and compute the pixel-to-micron conversion while automatically cropping the scale bar from both images.
+- **Porosity quantification:** Enhance the SEI image, run multi-Otsu segmentation, classify pores into primary and secondary groups, and visualize distributions alongside summary metrics (porosity %, mean diameters, ratio).
+- **Pt particle detection:** Suppress background with FFT, segment Pt particles, combine connected-component labeling (CCL) with normalized cross-correlation (NCC) to capture different particle sizes, and render heatmaps and surface-area-weighted histograms.
 - **3D grayscale viewer:** Downsample and smooth images before presenting an interactive 3D point-cloud representation of grayscale intensities.【F:website.py†L680-L754】
-- **Downloadable reports with AI insights:** Export a PDF that captures inputs, plots, computed metrics, and GPT-generated commentary tailored to observed porosity and particle characteristics.【F:website.py†L494-L676】
+- **Downloadable reports with AI insights:** Export a PDF that captures inputs, plots, computed metrics, and GPT-generated commentary tailored to observed porosity and particle characteristics.
 
 ## Requirements
 - Python 3.9 or newer.
@@ -38,16 +38,16 @@ streamlit run website.py --server.headless true --server.port 8501
 Then open the reported local URL in a browser to interact with the UI.
 
 ## Typical workflow
-1. **Upload & calibrate:** On Page 1, upload paired SEI/BSE images and enter the real-world scale to compute µm/px for downstream measurements.【F:website.py†L450-L492】
-2. **Analyze porosity:** Page 2 computes pore metrics, draws contours, and plots pore area and diameter histograms for the SEI image.【F:website.py†L137-L236】
-3. **Assess Pt particles:** Page 3 reports particle counts, size statistics, heatmaps, and surface-area weighting derived from the BSE image.【F:website.py†L254-L399】
-4. **Visualize in 3D:** Page 4 renders a point cloud of grayscale intensities with adjustable Gaussian smoothing.【F:website.py†L680-L754】
-5. **Generate the report:** Page 5 bundles the calibrated images, analysis summaries, and AI-written commentary into a downloadable PDF.【F:website.py†L494-L676】
+1. **Upload & calibrate:** On Page 1, upload paired SEI/BSE images and enter the real-world scale to compute µm/px for downstream measurements.
+2. **Analyze porosity:** Page 2 computes pore metrics, draws contours, and plots pore area and diameter histograms for the SEI image.
+3. **Assess Pt particles:** Page 3 reports particle counts, size statistics, heatmaps, and surface-area weighting derived from the BSE image.
+4. **Visualize in 3D:** Page 4 renders a point cloud of grayscale intensities with adjustable Gaussian smoothing.
+5. **Generate the report:** Page 5 bundles the calibrated images, analysis summaries, and AI-written commentary into a downloadable PDF.
 
 ## Troubleshooting tips
-- Ensure the two scale-bar points are distinct; identical coordinates prevent calibration.【F:website.py†L905-L918】
-- Verify the OpenAI key has quota—otherwise the PDF will fall back to a placeholder message for the AI commentary.【F:website.py†L640-L676】
-- NCC-based Pt detection assumes clear template regions; adjust image preprocessing upstream if matches are sparse.【F:website.py†L308-L366】
+- Ensure the two scale-bar points are distinct; identical coordinates prevent calibration.
+- Verify the OpenAI key has quota—otherwise the PDF will fall back to a placeholder message for the AI commentary.
+- NCC-based Pt detection assumes clear template regions; adjust image preprocessing upstream if matches are sparse.
 
 ## License
 This project inherits the license of its upstream source. Add license details here if you adopt a specific open-source license.
