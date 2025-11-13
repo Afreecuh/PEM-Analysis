@@ -6,7 +6,7 @@ A Streamlit application that supports proton-exchange membrane (PEM) imaging wor
 - **Scale bar annotation:** Upload secondary electron (SEI) and backscattered electron (BSE) images, mark two points on the scale bar, and compute the pixel-to-micron conversion while automatically cropping the scale bar from both images.
 - **Porosity quantification:** Enhance the SEI image, run multi-Otsu segmentation, classify pores into primary and secondary groups, and visualize distributions alongside summary metrics (porosity %, mean diameters, ratio).
 - **Pt particle detection:** Suppress background with FFT, segment Pt particles, combine connected-component labeling (CCL) with normalized cross-correlation (NCC) to capture different particle sizes, and render heatmaps and surface-area-weighted histograms.
-- **3D grayscale viewer:** Downsample and smooth images before presenting an interactive 3D point-cloud representation of grayscale intensities.【F:website.py†L680-L754】
+- **3D grayscale viewer:** Downsample and smooth images before presenting an interactive 3D point-cloud representation of grayscale intensities.
 - **Downloadable reports with AI insights:** Export a PDF that captures inputs, plots, computed metrics, and GPT-generated commentary tailored to observed porosity and particle characteristics.
 
 ## Requirements
