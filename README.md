@@ -1,6 +1,6 @@
-# PEM Analysis Toolkit
+# PEM Fuel Cell Catalyst Analysis Toolkit
 
-A Streamlit application that supports proton-exchange membrane (PEM) imaging workflows by guiding users from scale-bar calibration through porosity and platinum (Pt) particle analysis to automated report generation with AI commentary.
+A Streamlit application that supports proton-exchange membrane (PEM) imaging workflows by guiding users from scale-bar calibration through porosity and platinum (Pt) particle analysis to automated report generation with AI commentary: https://pem-analysis-biqblqe52kwqhnpcbqfatz.streamlit.app/
 
 ## Features
 - **Scale bar annotation:** Upload secondary electron (SEI) and backscattered electron (BSE) images, mark two points on the scale bar, and compute the pixel-to-micron conversion while automatically cropping the scale bar from both images.
